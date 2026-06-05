@@ -1,0 +1,208 @@
+<html>
+<head>
+<title>Tiles</title>
+<script src="img.js"></script>
+<script src="tile.js"></script>
+<script src="mathutils.js"></script>
+<script src="ui.js"></script>
+
+<script>
+	let img;
+	let sourceTiles;
+	let tile;
+	let tiles;
+
+	// analog clock at 2:52 (hour-hand pointing due east, minute-hand pointing north-west)
+	function createTile_252() {
+		const tile_252 = new Tile(20, 20, [0, 0, 0, 0]);
+		const red = [255, 0, 0, 255];
+		let x;
+		for (x = 1; x <= 9; ++x) {
+	                tile_252.set(x, x, red);
+		}
+		for (x = 10; x <= 18; ++x) {
+			tile_252.set(x, 9, red);
+		}
+		return tile_252;
+	}
+
+	// smiley-face (with border)
+	function createTile_smiley() {
+		const tile_smiley = new Tile(20, 20, [0, 0, 0, 0]);
+		const border = [255, 255, 255, 51];
+		const yellow = [192, 192, 0, 255];
+		for (let i = 0; i < 20; ++i) {
+			tile_smiley.set( i , 0, border);
+			tile_smiley.set( i, 19, border);
+			tile_smiley.set( 0,  i, border);
+			tile_smiley.set(19,  i, border);
+		}
+		const smiley_pix = [
+			[5, 3], [6, 3], [5, 4], [6, 4], // left eye
+			[10, 3], [11, 3], [10, 4], [11, 4], // right eye
+			[8, 5], // nose
+			[3, 6], [4, 7], [5, 7], [6, 8], [7, 8], [8, 8], [9, 8], [10, 8], [11, 7], [12, 7], [13, 6] // smile
+		];
+		for (let p = 0; p < smiley_pix.length; ++p) {
+			const pix = smiley_pix[p];
+			tile_smiley.set(pix[0], pix[1], yellow);
+		}
+		return tile_smiley;
+	}
+
+	function init() {
+		img = new Img('tiles');
+		sourceTiles = [
+			createTile_252(),
+			createTile_smiley()
+		];
+	}
+
+	function pickTile() {
+		tile = sourceTiles[randomOn(0, sourceTiles.length) >> 0];
+		tiles = [
+			[new TileRotatorFlipper(tile, 0, false), new TileRotatorFlipper(tile, 0, true)],
+			[new TileRotatorFlipper(tile, 90, false), new TileRotatorFlipper(tile, 90, true)],
+			[new TileRotatorFlipper(tile, 180, false), new TileRotatorFlipper(tile, 180, true)],
+			[new TileRotatorFlipper(tile, 270, false), new TileRotatorFlipper(tile, 270, true)]
+		];
+	}
+
+	function runTest() {
+		pickTile();
+		img.clear([0, 0, 0, 255]);
+		const center = img.center();
+		tiles[0][0].drawToImage(img, 100, 100);
+		tiles[0][1].drawToImage(img, 100, 130);
+		tiles[1][0].drawToImage(img, 130, 100);
+		tiles[1][1].drawToImage(img, 130, 130);
+		tiles[2][0].drawToImage(img, 160, 100);
+		tiles[2][1].drawToImage(img, 160, 130);
+		tiles[3][0].drawToImage(img, 190, 100);
+		tiles[3][1].drawToImage(img, 190, 130);
+		img.drawToCanvas();
+	}
+
+	function doRandom() {
+		pickTile();
+		img.clear([0, 0, 0, 255]);
+		for (let y = 0; y < img.height(); y += tile.height) {
+			for (let x = 0; x < img.width(); x += tile.width) {
+				const rot = randomOn(0.0, 3.9999) >> 0;
+				const flip = randomOn(0.0, 1.9999) >> 0;
+				tiles[rot][flip].drawToImage(img, x, y);
+			}
+		}
+		img.drawToCanvas();
+	}
+	
+	function doMirrored() {
+		pickTile();
+		img.clear([0, 0, 0, 255]);
+		for (let y = 0, revY = img.height() - tile.height; y < img.height() / 2; y += tile.height, revY -= tile.height) {
+			for (let x = 0, revX = img.width() - tile.width; x < img.width() / 2; x += tile.width, revX -= tile.width) {
+				const rot = randomOn(0.0, 3.9999) >> 0;
+				const flip = randomOn(0.0, 1.9999) >> 0;
+				// TODO: update capabilities to make it easier to hflip/vflip a given rotation
+				//       (instead of rotating an hflip, and then figuring out which one you need)
+				tiles[rot][flip].drawToImage(img, x, y);
+				tiles[(8-rot)%4][1-flip].drawToImage(img, revX, y);
+				tiles[(8-(rot+2))%4][1-flip].drawToImage(img, x, revY);
+				tiles[(rot+2)%4][flip].drawToImage(img, revX, revY);
+			}
+		}
+		img.drawToCanvas();
+	}
+
+	function doKaleidoscope() {
+		pickTile();
+		img.clear([0, 0, 0, 255]);
+		// create a 5x5 meta-tile of random orientations of source-tile
+		const kaleidTile = new Tile(100, 100, [0, 0, 0, 0]);
+		let x, y;
+		for (y = 0; y < kaleidTile.height; y += tile.height) {
+			for (x = 0; x < kaleidTile.width; x += tile.width) {
+				const rot = randomOn(0.0, 4.0) >> 0;
+				const flip = randomOn(0.0, 2.0) >> 0;
+				tiles[rot][flip].drawToTile(kaleidTile, x, y);
+			}
+		}
+		// create mirrored accesors
+		const mirroredTiles = [
+			[new TileRotatorFlipper(kaleidTile, 0, false), new TileRotatorFlipper(kaleidTile, 0, true)],
+			[new TileRotatorFlipper(kaleidTile, 180, true), new TileRotatorFlipper(kaleidTile, 180, false)]
+		];
+		// draw mirrored versions of meta-tile onto image
+		const numXTiles = (img.width() / kaleidTile.width) >> 0;
+		const numYTiles = (img.height() / kaleidTile.height) >> 0;
+		const ixStart = ((img.width() - numXTiles*kaleidTile.width) / 2.0) >> 0;
+		const iyStart = ((img.height() - numYTiles*kaleidTile.height) / 2.0) >> 0;
+		let ix, iy;
+		for (y = 0, iy = iyStart; y < numYTiles; ++y, iy += kaleidTile.height) {
+			for (x = 0, ix = ixStart; x < numXTiles; ++x, ix += kaleidTile.width) {
+				mirroredTiles[y%2][x%2].drawToImage(img, ix, iy);
+			}
+		}
+		// draw image
+		img.drawToCanvas();
+	}
+
+	let ui = {};
+
+	function buildUI() {
+		ui.testButton = new PushButton('button', 'test', 'Test', runTest);
+		ui.randomButton = new PushButton('button', 'random', 'Random', doRandom);
+		ui.mirrorButton = new PushButton('button', 'mirror', 'Mirrored', doMirrored);
+		ui.kaleidButton = new PushButton('button', 'kaleid', 'Kaleidoscope', doKaleidoscope);
+
+		const controlsDiv = document.getElementById('controls');
+		ui.testButton.appendToElement(controlsDiv);
+		ui.randomButton.appendToElement(controlsDiv);
+		ui.mirrorButton.appendToElement(controlsDiv);
+		ui.kaleidButton.appendToElement(controlsDiv);
+	}
+
+	function initFromParams() {
+	}
+	
+	window.onload = function() {
+		buildUI();
+		initFromParams();
+		init();
+		img.clear([0, 0, 0, 255]);
+		img.drawToCanvas();
+	}
+</script>
+<style>
+	* {
+		font-family: sans-serif;
+		background-color: #222222;
+		color: #aaaaaa;
+		margin: 2px;
+	}
+	.button {
+		background-color: #444444;
+		border: 1px solid #aaaaaa;
+		padding: 5px 10px;
+		border-radius: 4px;
+	}
+	.button:hover {
+		background-color: #555555;
+	}
+	.button:active {
+		background-color: #666666;
+	}
+	div.horiz {
+		float: left;
+	}
+</style>
+</head>
+<body>
+	<h1>Tiles</h1>
+	<div class="horiz" id="canvas">
+		<canvas width="800" height="600" id="tiles"></canvas>
+	</div>
+	<div class="horiz" id="controls">
+	</div>
+</body>
+</html>

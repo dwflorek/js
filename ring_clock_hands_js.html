@@ -1,0 +1,39 @@
+<html>
+<head>
+<title>Ring-Clock Hands</title>
+<script src="mathutils.js"></script>
+<script src="img.js"></script>
+<script src="ring_clock_hands.js"></script>
+<style>
+	* {
+		font-family: sans-serif;
+		background-color: #222222;
+		color: #aaaaaa;
+		margin: 2px;
+	}
+	.button {
+		background-color: #444444;
+		border: 1px solid #aaaaaa;
+		padding: 5px 10px;
+		border-radius: 4px;
+	}
+	.button:hover {
+		background-color: #555555;
+	}
+	.button:active {
+		background-color: #666666;
+	}
+	div.horiz {
+		float: left;
+	}
+</style>
+</head>
+<body>
+	<h1>Ring-Clock Hands</h1>
+	<div class="horiz" id="canvas">
+		<canvas width="450" height="450" id="rings"></canvas>
+	</div>
+	<div class="horiz" id="controls">
+	</div>
+</body>
+</html>

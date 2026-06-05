@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Noise</title>
+<script src="noise.js"></script>
+<script src="ui.js"></script>
+<script src="mathUtils.js"></script>
+<script src="img.js"></script>
+<script src="color.js"></script>
+<script>
+	class Fractal {
+		constructor() {
+			this.noise = undefined;
+			this.octaves = 1.0;
+			this.baseFreq = 1.0;
+			this.baseAmpl = 1.0;
+			this.octaveFreqFactor = 2.0;
+			this.octaveAmplFactor = 0.5;
+		}
+
+		setNoise(noise) {
+			this.noise = noise;
+		}
+
+		setOctaves(o) {
+			this.octaves = o;
+		}
+
+		setBaseFreq(f) {
+			this.baseFreq = f;
+		}
+
+		setBaseAmpl(a) {
+			this.baseAmpl = a;
+		}
+		setOctaveFreqFactor(ff) {
+			this.octaveFreqFactor = ff;
+		}
+
+		setOctaveAmplFactor(af) {
+			this.octaveAmplFactor = af;
+		}
+
+		getValueAt(x, y, z) {
+			let f = this.baseFreq;
+			let a = this.baseAmpl;
+			let val = 0.0;
+			for (let i = 0; i < this.octaves; ++i) {
+				// TODO: offset (x,y,z) for each octave
+				val += a * this.noise.getValueAt(f*x, f*y, f*z);
+				f *= this.octaveFreqFactor;
+				a *= this.octaveAmplFactor;
+			}
+			return val;
+		}
+	}
+
+	class NoiseAnimator {
+		constructor() {
+			this.noise = undefined;
+			this.nz = 0.0;
+			this.pixelSize = 0.01;
+		}
+
+		setNoise(noise) {
+			this.noise = noise;
+		}
+
+		resetZ() {
+			this.nz = 0.0;
+		}
+
+		updateZ() {
+			this.nz += this.pixelSize;
+		}
+
+		setPixelSize(s) {
+			this.pixelSize = s;
+		}
+
+		getNoiseVal(x, y) {
+			return this.noise.getValueAt(x, y, this.nz);
+		}
+	}
+
+	class Flower {
+		constructor(noiseAnimator, x, y, r, numPetals, petalReps, hsvColor) {
+			this.noise = noiseAnimator;
+			this.centerX = x;
+			this.centerY = y;
+			this.size = r;
+			this.numPetals = numPetals;
+			this.petalReps = petalReps;
+			this.hsvColor = hsvColor.slice(0, 3);
+			this.colors = undefined;
+			this.minScale = undefined;
+			this.maxScale = undefined;
+			this.chooseColors();
+		}
+
+		chooseColors() {
+			const hueRange = randomOn(0.05, 0.3);
+			const satRange = randomOn(0, 0.3);
+			const valRange = 0.3 - satRange; // if saturation allowed to vary a lot, minimize val variation, & vv
+			
+			const minHue = this.hsvColor[0] - hueRange/2.0;
+			const maxHue = this.hsvColor[0] + hueRange/2.0;
+			const minSat = Math.max(0.0, this.hsvColor[1] - satRange/2.0);
+			const maxSat = Math.min(1.0, this.hsvColor[1] + satRange/2.0);
+			const minVal = Math.max(0.0, this.hsvColor[2] - valRange/2.0);
+			const maxVal = Math.min(1.0, this.hsvColor[2] + valRange/2.0);
+
+			this.colors = [];
+			for (let i = 0; i < this.petalReps; ++i) {
+				const hsvColor = [randomOn(minHue, maxHue), randomOn(minSat, maxSat), randomOn(minVal, maxVal)];
+				const rgbColor = hsvToRgb(...hsvColor);
+				this.colors.push(rgbColor.map(to8Bit));
+			}
+
+			this.minScale = randomOn(0.1, 0.4);
+			this.maxScale = randomOn(0.4, 0.8);
+		}
+
+		draw(img) {
+			
+			
+			let pixelIndex = 0;
+			let ny = (imgData.height-1)/2.0 * this.pixelSize;
+			for (let y = 0; y < imgData.height; ++y) {
+				let nx = -(imgData.width-1)/2.0 * this.pixelSize;
+				for (let x = 0; x < imgData.width; ++x) {
+					const nv = this.getNoiseVal(nx, ny);
+					let color;
+					if (this.colorMode == 'gray') {
+						const val = (nv + 1) / 2.0;
+						if (val < 0.0) {
+							color = [255, 255, 255];
+						} else if (val > 1.0) {
+							color = [0, 0, 0];
+						} else {
+							let gray = val;
+							if (!this.smooth) {
+								const band = (10*gray)>>0;
+								gray = band/9.0;
+							}
+							gray = to8Bit(0.2 + 0.6*gray);
+							color = [gray, gray, gray];
+						}
+					}
+					else if (this.colorMode == 'redBlue') {
+						if (nv < -1.0) {
+							color = [0, 0, 0];
+						} else if (nv > 1.0) {
+							color = [255, 255, 255];
+						} else {
+							if (nv > 0.0) {
+								let val = nv;
+								if (!this.smooth) {
+									const band = (5*val)>>0;
+									val = band/4.0;
+								}
+								const red = to8Bit(0.75);
+								const other = to8Bit(val*0.6);
+								color = [red, other, other];
+							} else {
+								let val = nv + 1.0;
+								if (!this.smooth) {
+									const band = (5*val)>>0;
+									val = band/4.0;
+								}
+								const blue = to8Bit(0.5 + 0.25*val);
+								const other = to8Bit(0.5*val);
+								color = [other, other, blue];
+							}
+						}
+					}
+					else {
+						const whichColor = Math.floor(
+							this.colors.length * (nv + 1) / 2.0
+						)>>0;
+						if (whichColor < 0 || whichColor >= this.colors.length) {
+							color = [255, 255, 255];
+						} else {
+							color = this.colors[whichColor];
+						}
+					}
+					colorPixel(
+						imgData, pixelIndex,
+						[color[0]>>0, color[1]>>0, color[2]>>0, 255]);
+					pixelIndex += 4;
+					nx += this.pixelSize;
+				}
+				ny -= this.pixelSize;
+			}
+		}
+	}
+
+	class NoiseTerrain extends NoiseViewerBase {
+		constructor() {
+			super();
+			this.shadeTerrain = false;
+			this.shadeWater = true;
+		}
+
+		setShadeTerrain(val) {
+			this.shadeTerrain = val;
+		}
+
+		setShadeWaterWithTerrain(val) {
+			this.shadeWater = val;
+		}
+
+		draw(imgData) {
+			const light = normalize([5.0, -10.0, 15.0]);
+			let pixelIndex = 0;
+			let ny = (imgData.height-1)/2.0 * this.pixelSize;
+			for (let y = 0; y < imgData.height; ++y) {
+				let nx = -(imgData.width-1)/2.0 * this.pixelSize;
+				for (let x = 0; x < imgData.width; ++x) {
+					const elev = this.getNoiseVal(nx, ny);
+					//const colorOffset = this.noise.getValueAt(0.1*x, 0.1*y, 0.1*this.nz/this.pixelSize);
+					const tcv = elev /* + 0.1*colorOffset */;
+					let color;
+					if (tcv < -0.5) {      color = [ 32,  48,  64]; }
+					else if (tcv < -0.2) { color = [ 32,  96, 128]; }
+					else if (tcv < 0.0) {  color = [ 32, 144, 192]; }
+					else if (tcv < 0.1) {  color = [240, 240, 224]; }
+					else if (tcv < 0.3) {  color = [192, 224, 128]; }
+					else if (tcv < 0.5) {  color = [ 96, 144,  96]; }
+					else if (tcv < 0.7) {  color = [ 64,  96,  32]; }
+					else {                 color = [144, 144, 144]; }
+
+					if (this.shadeTerrain && (elev > 0.0 || this.shadeWater)) {
+						const elevEast = this.getNoiseVal(nx+this.pixelSize, ny);
+						const dElevDx = [this.pixelSize, 0, elevEast - elev];
+						const elevNorth = this.getNoiseVal(nx, ny+this.pixelSize);
+						const dElevDy = [0, this.pixelSize, elevNorth - elev];
+						const n = normalize(crossProduct(dElevDx, dElevDy));
+						const nDotL = innerProduct(n, light);
+						let illum = 0.6;
+						if (nDotL > 0.0) {
+							illum += nDotL * 0.4;
+						}
+						color = scaleColor(color, illum);
+					}
+					colorPixel(
+						imgData, pixelIndex,
+						[color[0]>>0, color[1]>>0, color[2]>>0, 255]);
+					pixelIndex += 4;
+					nx += this.pixelSize;
+				}
+				ny -= this.pixelSize;
+			}
+		}
+	}
+
+	class QAEBTerrain extends NoiseViewerBase {
+		constructor() {
+			super();
+			this.camera = undefined
+			this.row = -1;
+			this.flatWater = false;
+			this.includeFg = false;
+			this.includeBg = false;
+		}
+
+		setFlatWater(val) {
+			this.flatWater = val;
+		}
+
+		setIncludeForeground(val) {
+			this.includeFg = val;
+		}
+
+		setIncludeBackground(val) {
+			this.includeBg = val;
+		}
+
+		_createCamera(imgData) {
+			const hFov = 40 * Math.PI/180.0;
+			const camDownAng = 15 * Math.PI/180.0;
+			// center of image is ray from cam to origin (where noise val is 0 by our impl),
+			// x-extents at center-y correspond to +/- zoom/2. Cam-dist is so that we get
+			// 40 degree horizontal FOV, looking from -y. Cam-height is so that we get the
+			// desired down-angle.
+			const worldWidthAtCenter = imgData.width * this.pixelSize;
+			// tan(halfHFov) = halfWidth/camDist -> camDist = halfWidth/tan(halfHFov)
+			const camDist = (worldWidthAtCenter/2.0) / Math.tan(hFov/2.0);
+			const camP = [0.0, -camDist * Math.cos(camDownAng), camDist * Math.sin(camDownAng)];
+			const camV = normalize([-camP[0], -camP[1], -camP[2]]);
+			const camRight = [1.0, 0.0, 0.0];
+			const camUp = crossProduct(camRight, camV);
+			const stepFactor = 1.0 + this.pixelSize/camDist;
+			return {
+				"d": camDist,
+				"p": camP,
+				"v": camV,
+				"right": camRight,
+				"up": camUp,
+				"fwd": stepFactor,
+				"back": 1.0/stepFactor
+			};
+		}
+
+		_rayFor(imgData, cam, x, y) {
+			const dx = x - (imgData.width - 1)/2.0;
+			const dy = y - (imgData.height - 1)/2.0;
+			return normalize(vecAddScaled3(cam.v, cam.d, cam.right, dx*this.pixelSize, cam.up, -dy*this.pixelSize));
+		}
+
+		_elevAtXY(x, y) {
+			return this.noise.getValueAt(x, y, this.nz);
+		}
+
+		_intersectTerrain(p, v, startD, endD, dFactor) {
+			let prevD = 0.0;
+			let prevZ = p[2];
+			let prevElev = this._elevAtXY(p[0], p[1]);
+
+			let d = startD;
+			let testP = vecAddScaled(p, 1.0, v, d); // p + d*v
+			let elev = this._elevAtXY(testP[0], testP[1]);
+
+			let height = elev;
+			if (this.flatWater && elev < 0.0) {
+				height = 0.0;
+			}
+
+			while (d < endD && testP[2] > height) {
+				prevD = d;
+				prevZ = testP[2];
+				prevElev = elev;
+
+				d *= dFactor;
+				testP = vecAddScaled(p, 1.0, v, d); // p + d*v
+				elev = this._elevAtXY(testP[0], testP[1]);
+				height = elev;
+				if (this.flatWater && elev < 0.0) {
+					height = 0.0;
+				}
+			}
+			if (testP[2] > height) {
+				// stayed above terrain, assume we're hitting "sky"
+				return undefined;
+			}
+
+			let intersectionD;
+			let intersectionP;
+			let intersectionN;
+			let intersectionE;
+			if (d == startD && testP[2] < elev) {
+				// started out below terrain, might render as "near wall"
+				intersectionD = startD;
+				intersectionP = testP;
+				intersectionN = undefined;
+				intersectionE = elev;
+			}
+			else if (this.flatWater && height > elev) {
+				// intersection is at distance d such that (p + dv)[z] == 0.0
+				intersectionD = (0.0 - p[2]) / v[2];
+				intersectionP = vecAddScaled(p, 1.0, v, intersectionD);
+				intersectionN = normalize([-v[0], -v[1], -v[2]]); // fake normal
+				intersectionE = this._elevAtXY(intersectionP[0], intersectionP[1]);
+				
+			}
+			else {
+				// 1-D intersection between ray-segment and terrain line-segment
+				// at distance d1, ray height z1 is above terrain elevation e1, at
+				// d2, z2 is below e2. These four points (z(d1), e(d1), z(d2), e(d2))
+				// define two intersecting segments, the intersection is at (with some
+				// trivial manipulation):
+				intersectionD = prevD +
+					((prevZ - prevElev) / ((elev - prevElev) - (testP[2] - prevZ)))*(d - prevD);
+				intersectionP = vecAddScaled(p, 1.0, v, intersectionD);
+
+				// now approximate a surface normal by finding points on the surface
+				// "in front of" and "to the right of" this point, and computing the
+				// cross-product of the resulting "in surface" vectors
+				const vF = [v[0],  v[1], 0.0];
+				const vR = [v[1], -v[0], 0.0];
+				const pixelSize = intersectionD * (dFactor - 1.0);
+				let pF = vecAddScaled(intersectionP, 1.0, vF, pixelSize);
+				pF[2] = this._elevAtXY(pF[0], pF[1]);
+				let pR = vecAddScaled(intersectionP, 1.0, vR, pixelSize);
+				pR[2] = this._elevAtXY(pR[0], pR[1]);
+				const vToF = vecAddScaled(pF, 1.0, intersectionP, -1.0); 
+				const vToR = vecAddScaled(pR, 1.0, intersectionP, -1.0); 
+				intersectionN = normalize(crossProduct(vToR, vToF));
+				intersectionE = this._elevAtXY(intersectionP[0], intersectionP[1]);
+			}
+
+			return {
+				"d": intersectionD,
+				"p": intersectionP,
+				"n": intersectionN,
+				"e": intersectionE
+			};
+		}
+
+		// renders the next row; returns true if there are more rows to render, otherwise false
+		drawNextRow(imgData) {
+			const light = normalize([5.0, -10.0, 15.0]);
+			// render from bottom to top, for efficiency: next row up will be farther than this row,
+			// once an entire row is empty, all rows above will also be empty
+			if (this.row < 0) {
+				this.camera = this._createCamera(imgData);
+				console.log(`camera p [${this.camera.p}], v [${this.camera.v}], right [${this.camera.right}], up [${this.camera.up}], d ${this.camera.d}, fwd ${this.camera.fwd}`);
+				this.row = imgData.height - 1;
+				this.rowStartDs = new Array(imgData.width).fill(0.1);
+			}
+
+			// console.log(`row ${this.row}`);
+			let pixelIndex = this.row * imgData.width * 4;
+			let terrainFound = false;
+
+			for (let x = 0; x < imgData.width; ++x) {
+				const ray = this._rayFor(imgData, this.camera, x, this.row);
+				// start for this pixel is two steps back from intersection for previous row
+				const prevD = this.rowStartDs[x];
+				if (prevD < 0.0) {
+					// sky in this columm, from this row on
+					pixelIndex += 4;
+					continue;
+				}
+				const farY = (imgData.height - 1)/2.0 * this.pixelSize;
+				const nearY = -1.0 * farY;
+				let startD = prevD * this.camera.back * this.camera.back;
+				if (!this.includeFg) {
+					// startD = d where (p + dv)[y] = -(imgData.height-1)/2.0 * this.pixelSize
+					const d1 = (nearY - this.camera.p[1]) / ray[1];
+					startD = Math.max(d1, startD);
+				}
+				let endD = 100.0;
+				if (!this.includeBg) {
+					const d2 = (farY - this.camera.p[1]) / ray[1];
+					endD = Math.min(d2, endD);
+				}
+
+				if (x == 400) {
+					if (this.row == imgData.height - 1) {
+						console.log(`includeFg=${this.includeFg}, includeBg=${this.includeBg}`);
+					}
+					console.log(`y=${this.row}, v=[${ray}], prevD=${prevD}, nearY=${nearY}, farY=${farY}, startD=${startD}, endD=${endD}`);
+				}
+				
+				const i = this._intersectTerrain(this.camera.p, ray, startD, endD, this.camera.fwd);
+				if (i === undefined) {
+					// missed terrain -> sky for this column, from this row on
+					this.rowStartDs[x] = -1.0;
+					pixelIndex += 4;
+					continue;
+				}
+
+				if (x == 400 && this.row % 50 == 49) {
+					console.log(`(${x},${this.row}): intersection d ${i.d}, p [${i.p}]`);
+				}
+
+				if (i.d == startD) {
+					// beneath terrain at start
+					colorPixel(imgData, pixelIndex, [64, 64, 64, 255]);
+					pixelIndex += 4;
+					continue;
+				}
+
+				terrainFound = true;
+				this.rowStartDs[x] = i.d;
+
+				const elev = i.e;
+				const tcv = elev;  // + 0.1*colorOffset
+				let color;
+				if (tcv < -0.5) {      color = [ 32,  48,  64]; }
+				else if (tcv < -0.2) { color = [ 32,  96, 128]; }
+				else if (tcv < 0.0) {  color = [ 32, 144, 192]; }
+				else if (tcv < 0.1) {  color = [240, 240, 224]; }
+				else if (tcv < 0.3) {  color = [192, 224, 128]; }
+				else if (tcv < 0.5) {  color = [ 96, 144,  96]; }
+				else if (tcv < 0.7) {  color = [ 64,  96,  32]; }
+				else {                 color = [144, 144, 144]; }
+
+				if (!this.flatWater || elev > 0.0) {
+					const nDotL = innerProduct(i.n, light);
+					let illum = 0.6;
+					if (nDotL > 0.0) {
+						illum += nDotL * 0.4;
+					}
+					color = scaleColor(color, illum);
+				}
+
+				colorPixel(imgData, pixelIndex, [color[0]>>0, color[1]>>0, color[2]>>0, 255]);
+				pixelIndex += 4;
+			}
+
+			this.row -= 1;
+			if (! terrainFound) {
+				// we're done, set row past the top so we restart the next time
+				this.row = -1;
+			}
+			return (this.row >= 0);
+		}
+	}
+
+	function scaleColor(c, s) {
+		return [c[0]*s, c[1]*s, c[2]*s];
+	}
+
+	function addColor(c1, c2) {
+		return [c1[0]+c2[0], c1[1]+c2[1], c1[2]+c2[2]];
+	}
+
+	function mixColor(c1, s1, c2, s2) {
+		return addColor(scaleColor(c1, s1), scaleColor(c2, s2));
+	}
+
+	function fadeColor(c1, c2, t) {
+		// c = c1 + t(c2 - c1);
+		// return c1*(1-t) + c2*t;
+		return mixColor(c1, 1.0-t, c2, t);
+	}
+
+	function colorPixel(imageData, pixelIndex, color) {
+                imageData.data[pixelIndex] = color[0];
+                imageData.data[pixelIndex+1] = color[1];
+                imageData.data[pixelIndex+2] = color[2];
+                imageData.data[pixelIndex+3] = color[3];
+	}
+		
+	function clearImage(imageData, color) {
+		var row, col, pidx;
+		pidx = 0;
+		for (row = 0; row < imageData.height; ++row) {
+			for (col = 0; col < imageData.width; ++col) {
+				colorPixel(imageData, pidx, color);
+				pidx += 4;
+			}
+		}
+	}
+
+	let fractal;
+	let viewer;
+
+	function refreshNoise() {
+		const noise = new Noise(64);
+		fractal.setNoise(noise);
+	}
+
+	const img = new Img('noiseFlowers');
+
+	function initViewers() {
+		fractal = new Fractal();
+		refreshNoise();
+	}
+
+	function clearScene() {
+		img.clear([0, 0, 0, 255]);
+		img.drawToCanvas();
+	}
+
+	function drawScene() {
+		if (viewer === qaebTerrain) {
+			setTimeout(drawRow, 0, imgData);
+		} else {
+			viewer.draw(imgData);
+			ctx.putImageData(imgData, 0, 0);
+		}
+	}
+	
+	function refreshNoiseAndRedraw() {
+		stopRunning();
+		const noise = new Noise(64);
+		fractal.setNoise(noise);
+		drawScene();
+	}
+
+	function update() {
+		stopRunning();
+
+		fractal.setOctaves(Number(ui.numOctaves.getContent())>>0);
+		fractal.setBaseFreq(Number(ui.baseFreq.getContent()));
+		fractal.setOctaveFreqFactor(Number(ui.freqFactor.getContent()));
+		fractal.setBaseAmpl(Number(ui.baseAmpl.getContent()));
+		fractal.setOctaveAmplFactor(Number(ui.amplFactor.getContent()));
+
+		const pixelSize = 2.0 / Math.min(imgData.width, imgData.height);
+		noiseView.setPixelSize(pixelSize);
+		noiseTerrain.setPixelSize(pixelSize);
+		qaebTerrain.setPixelSize(pixelSize);
+
+		const colorScaleFactor = Number(ui.scaleFactor.getContent());
+
+		const selectedRadioButton = ui.viewerRadioButtons.selectedButton();
+		const selectedVal = selectedRadioButton.getAttribute('value');
+		updateViewer(selectedVal);
+		drawScene();
+	}
+
+	function updateAndDraw() {
+		noiseView.updateZ();
+		noiseTerrain.updateZ();
+		qaebTerrain.updateZ();
+		drawScene();
+	}
+
+	let isRunning = false;
+	let redrawTimer = null;
+
+	function updateGoButton() {
+		if (isRunning) {
+			ui.goStopButton.updateState('Stop', stopRunning);
+		} else {
+			ui.goStopButton.updateState('Run', startRunning);
+		}
+	}
+
+	function startRunning() {
+		if (!isRunning) {
+			isRunning = true;
+			updateGoButton();
+			redrawTimer = setInterval(updateAndDraw, 250);
+		}
+	} 
+
+	function stopRunning() {
+		if (isRunning) {
+			isRunning = false;
+			clearInterval(redrawTimer);
+			redrawTimer = null;
+			updateGoButton();
+		}
+	}
+
+	let ui = {};
+
+	function uiNoiseDiv() {
+		const div = document.createElement('div');
+		div.setAttribute('class', 'mainDiv');
+		ui.numOctaves = new TextEntry('textField', 'octaves', 1, 'Number of octaves');
+		ui.baseFreq = new TextEntry('textField', 'baseFreq', 1.0, 'Base frequency (inverse of zoom)');
+		ui.freqFactor = new TextEntry('textField', 'freqFactor', 2.0, 'Frequency multiplier');
+		ui.baseAmpl = new TextEntry('textField', 'baseAmpl', 1.0, 'Base amplitude)');
+		ui.amplFactor = new TextEntry('textField', 'amplFactor', 0.5, 'Amplitude multiplier');
+		ui.updateButton = new PushButton('button', 'update', 'Update', update);
+		ui.refreshNoiseButton = new PushButton('button', 'refresh_noise', 'Refresh Noise', refreshNoiseAndRedraw);
+		ui.numOctaves.appendToElement(div);
+		ui.baseFreq.appendToElement(div);
+		ui.freqFactor.appendToElement(div);
+		ui.baseAmpl.appendToElement(div);
+		ui.amplFactor.appendToElement(div);
+		div.appendChild(document.createElement('br'));
+		ui.updateButton.appendToElement(div);
+		ui.refreshNoiseButton.appendToElement(div);
+		return div;
+	}
+
+	function buildUI() {
+		noiseDiv = uiNoiseDiv();
+
+		ui.colorScaleFactor = new TextEntry('textField', 'scaleFactor', 1.0, 'Color scale factor (map noise to [-1,1])');
+		ui.goStopButton = new PushButton('button', 'go_stop', '');
+
+		const controlsDiv = document.getElementById('controls');
+		controlsDiv.appendChild(noiseDiv);
+		ui.colorScaleFactor.appendToElement(controlsDiv);
+		ui.goStopButton.appendToElement(controlsDiv);
+	}
+
+	function initFromParams() {
+	}
+	
+	window.onload = function() {
+		buildUI();
+		initFromParams();
+		updateGoButton();
+		initImage();
+		initViewers();
+		clearScene();
+		update();
+	}
+</script>
+<style>
+	* {
+		font-family: sans-serif;
+		background-color: #222222;
+		color: #aaaaaa;
+		margin: 2px;
+	}
+	.button {
+		background-color: #444444;
+		border: 1px solid #aaaaaa;
+		padding: 5px 10px;
+		border-radius: 4px;
+	}
+	.button:hover {
+		background-color: #555555;
+	}
+	.button:active {
+		background-color: #666666;
+	}
+	div.horiz {
+		float: left;
+	}
+	label.rb_label {
+		margin-right: 10px;
+	}
+</style>
+</head>
+<body>
+	<h1>Noise</h1>
+	<div class="horiz" id="canvas">
+		<canvas width="800" height="600" id="noise"></canvas>
+	</div>
+	<div class="horiz" id="controls">
+	</div>
+</body>
+</html>

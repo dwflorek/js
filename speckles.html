@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Speckles</title>
+<script src="noise.js"></script>
+<script src="noiseFractal.js"></script>
+<script src="ui.js"></script>
+<script src="img.js"></script>
+<script src="color.js"></script>
+<script src="automation.js"></script>
+<script src="mathutils.js"></script>
+<script>
+        function getRandomColor() {
+                const val = randomOn(0.3, 1.0);
+                const sat = randomOn(0.5, 1.0);
+                const hue = randomOn(0.0, 1.0);
+                const rgb = hsvToRgb(hue, sat, val);
+                return [to8Bit(rgb[0]), to8Bit(rgb[1]), to8Bit(rgb[2]), 255];
+        }               
+
+	function getLuminance(rgb) {
+		return (rgb[0]/255.0 * 0.299 + rgb[1]/255.0 * 0.587 + rgb[2]/255.0 * 0.114);
+	}
+
+	class SpeckleViewer {
+		constructor() {
+			this.randomizeColors();
+		}
+
+		_dot(v1, v2) {
+			return v1[0]*v2[0] + v1[1]*v2[1] + v1[2]*v2[2];
+		}
+
+		randomizeColors() {
+			const numColors = randomOn(1, 9) >> 0;
+			this.colors = [];
+			for (let c = 0; c < numColors; c += 1) {
+				this.colors.push(getRandomColor());
+			}
+		}
+
+		computeBaseImage(baseImg) {
+			const lightDir = [1.0, 3.0, 2.0];
+			const lightDirMag = Math.sqrt(this._dot(lightDir, lightDir));
+			for (let i = 0; i < 3; i += 1) {
+				lightDir[i] /= lightDirMag;
+			}
+			const center = baseImg.center();
+			const r = Math.min(baseImg.height(), baseImg.width()) / 2.0;
+			const fIncr = 1.0 / r;
+			let fy = center[1] / r;
+			for (let y = 0; y < baseImg.height(); y += 1) {
+				let fx = -center[0] / r;
+				for (let x = 0; x < baseImg.width(); x += 1) {
+					const frSqrd = fx*fx + fy*fy;
+					let lum = 0.2;
+					if (frSqrd < 1.0) {
+						const fzSqrd = 1.0 - frSqrd;
+						const fz = Math.sqrt(fzSqrd);
+						lum = 0.4;
+                                                const nDotL = this._dot([fx, fy, fz], lightDir);
+						if (nDotL > 0.0) {
+							lum += (0.6 * nDotL);
+						}
+					// use green channel to store desired luminance
+					}
+					baseImg.colorPixelXY(x, y, [0, to8Bit(lum), 0, 255]);
+					fx += fIncr;
+				}
+				fy -= fIncr;
+			}
+		}
+
+		speckle(baseImg, img, numPixels) {
+			for (let p = 0; p < numPixels; p += 1) {
+				const x = randomOn(0, img.width()) >> 0;
+				const y = randomOn(0, img.height()) >> 0;
+				const pixelIndex = (y * img.width() + x)*4;
+				const pVal = randomOn(0, 256) >> 0;
+				if (pVal < baseImg.imgData.data[pixelIndex+1]) { // compare to green channel
+					// TODO: pick color based on luminances, for now just random
+					const c = randomOn(0, this.colors.length) >> 0;
+					img.colorPixel(pixelIndex, this.colors[c]);
+				}
+				else {
+					img.colorPixel(pixelIndex, [0, 0, 0, 255]);
+				}
+			}
+		}
+
+		draw(img) {
+			img.drawToCanvas();
+		}
+	}
+
+	let baseImg;
+	let img;
+	let speckle;
+	let runner;
+
+	function runCB(cbData) {
+		speckle.speckle(baseImg, img, 1000);
+		img.drawToCanvas();
+	}
+
+	function initStuff() {
+		baseImg = new Img('speckle');
+		img = new Img('speckle');
+		speckle = new SpeckleViewer();
+		runner = new Runner(null, null, runCB, 100, img);
+	}
+
+	function reset() {
+		speckle.computeBaseImage(baseImg);
+		speckle.randomizeColors();
+		img.clear([0, 0, 0, 255]);
+		img.drawToCanvas();
+	}
+
+	function refreshFalseColors() {
+		noiseView.refreshFalseColors();
+		drawScene();
+	}
+
+	let ui = {};
+
+	function updateRunStopButton() {
+		if (runner.running()) {
+			ui.runStopButton.updateState('Stop', stopRunning);
+		} else {
+			ui.runStopButton.updateState('Run', startRunning);
+		}
+	}
+
+	function clearCb(nullData_) {
+		runner.stop(); 
+		updateRunStopButton();
+		reset();
+	}       
+                
+	function colorCb(nullData_) {
+		speckle.randomizeColors();
+	}
+
+	function startRunning(nullData_) {
+		runner.start();
+		updateRunStopButton();
+	}       
+                
+	function stopRunning(nullData_) {
+		runner.stop();
+		updateRunStopButton();
+	}
+
+	/*
+	function uiNoiseDiv() {
+		const div = document.createElement('div');
+		div.setAttribute('class', 'mainDiv');
+		ui.numOctaves = new TextEntry('textField', 'octaves', 1, 'Number of octaves');
+		ui.baseFreq = new TextEntry('textField', 'baseFreq', 3.0, 'Base frequency (inverse of zoom)');
+		ui.freqFactor = new TextEntry('textField', 'freqFactor', 2.0, 'Frequency multiplier');
+		ui.baseAmpl = new TextEntry('textField', 'baseAmpl', 0.333, 'Base amplitude)');
+		ui.amplFactor = new TextEntry('textField', 'amplFactor', 0.5, 'Amplitude multiplier');
+		ui.updateButton = new PushButton('button', 'update', 'Update', update);
+		ui.refreshNoiseButton = new PushButton('button', 'refresh_noise', 'Refresh Noise', refreshNoiseAndRedraw);
+		ui.numOctaves.appendToElement(div);
+		ui.baseFreq.appendToElement(div);
+		ui.freqFactor.appendToElement(div);
+		ui.baseAmpl.appendToElement(div);
+		ui.amplFactor.appendToElement(div);
+		div.appendChild(document.createElement('br'));
+		ui.updateButton.appendToElement(div);
+		ui.refreshNoiseButton.appendToElement(div);
+		return div;
+	}
+	*/
+
+	function buildUI() {
+		ui.clearButton = new PushButton('button', 'clear', 'Clear', clearCb);
+                ui.runStopButton = new PushButton('button', 'runStop', 'Run', startRunning);
+		ui.changeColorsButton = new PushButton('button', 'colors', 'Change Colors', colorCb);
+
+		const controlsDiv = document.getElementById('controls');
+		ui.clearButton.appendToElement(controlsDiv);
+		ui.runStopButton.appendToElement(controlsDiv);
+		ui.changeColorsButton.appendToElement(controlsDiv);
+	}
+
+	function initFromParams() {
+	}
+	
+	window.onload = function() {
+		buildUI();
+		initFromParams();
+		initStuff();
+		reset();
+	}
+</script>
+<style>
+	* {
+		font-family: sans-serif;
+		background-color: #222222;
+		color: #aaaaaa;
+		margin: 2px;
+	}
+	.button {
+		background-color: #444444;
+		border: 1px solid #aaaaaa;
+		padding: 5px 10px;
+		border-radius: 4px;
+	}
+	.button:hover {
+		background-color: #555555;
+	}
+	.button:active {
+		background-color: #666666;
+	}
+	div.horiz {
+		float: left;
+	}
+	label.rb_label {
+		margin-right: 10px;
+	}
+</style>
+</head>
+<body>
+	<h1>Speckle</h1>
+	<div class="horiz" id="canvas">
+		<canvas width="800" height="600" id="speckle"></canvas>
+	</div>
+	<div class="horiz" id="controls">
+	</div>
+</body>
+</html>

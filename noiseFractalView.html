@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Noise Fractal View</title>
+<script src="noise.js"></script>
+<script src="noiseFractal.js"></script>
+<script src="ui.js"></script>
+<script src="noiseFractal_ui.js"></script>
+<script src="automation.js"></script>
+<script src="img.js"></script>
+<script src="mathutils.js"></script>
+<script src="myRandom.js"></script>
+<script>
+	class FractalViewerBase {
+		constructor() {
+			this.fractal = undefined;
+			this.nz = 0.0;
+			this.pixelSize = 0.01;
+		}
+
+		setFractal(fractal) {
+			this.fractal = fractal;
+		}
+
+		getZ() {
+			return this.nz;
+		}
+
+		setZ(z) {
+			this.nz = z;
+		}
+
+		resetZ() {
+			this.nz = 0.0;
+		}
+
+		updateZ() {
+			this.nz += this.pixelSize;
+		}
+
+		getPixelSize() {
+			return this.pixelSize;
+		}
+
+		setPixelSize(s) {
+			this.pixelSize = s;
+		}
+
+		getValAt(x, y) {
+			return this.fractal.getValueAt(x, y, this.nz);
+		}
+	}
+
+	class FractalView extends FractalViewerBase {
+		constructor() {
+			super();
+		}
+
+		draw(img) {
+			const numBands = 33;
+			const bandWidth = 2.0/numBands;
+			let pixelIndex = 0;
+			let ny = img.cy * this.pixelSize;
+			for (let y = 0; y < img.height(); ++y) {
+				let nx = -(img.cx) * this.pixelSize;
+				for (let x = 0; x < img.width(); ++x) {
+					const nv = this.getValAt(nx, ny);
+					if (nv < -0.01 || nv > 0.01) {
+						const band = ( (numBands - 1)/2 + (nv > 0.0 ? nv + bandWidth/2.0 : nv - bandWidth/2.0)/bandWidth ) >> 0;
+						const primaryBand = (band / 3) >> 0;
+						const secondaryBand = band % 3;
+						const shade = to8Bit(
+							(0.25 + 0.5*(primaryBand / (numBands/3))) +
+							(secondaryBand - 1)*0.1
+						);
+						img.colorPixel(pixelIndex, [shade>>0, shade>>0, shade>>0, 255]);
+					}
+					else {
+						img.colorPixel(pixelIndex, [128, 0, 0, 255]);
+					}
+					pixelIndex += 4;
+					nx += this.pixelSize;
+				}
+				ny -= this.pixelSize;
+			}
+		}
+	}
+
+	let noise;
+	let fractal;
+	let fractalView;
+	let img;
+
+	function initImage() {
+		img = new Img('noiseFractal');
+	}
+
+	function initViewers() {
+		fractal = new NoiseFractal();
+		fractalView = new FractalView();
+		noise = new Noise(64);
+		fractal.setNoise(noise);
+		fractalView.setFractal(fractal);
+	}
+
+	function clearScene() {
+		img.clear([0, 0, 0, 255]);
+		img.drawToCanvas();
+	}
+
+	function drawScene() {
+		fractalView.draw(img);
+		img.drawToCanvas();
+	}
+	
+	function refreshNoiseAndRedraw() {
+		runner.stop();
+		const noiseSize = Number(ui.noiseSize.getContent());
+		const noise = new Noise(noiseSize);
+		fractal.setNoise(noise);
+		drawScene();
+	}
+
+	function applyRandomSeed(seed) {
+		runner.stop();
+		sMyRandom(seed);
+		refresNoiseAndRedraw();
+	}
+
+	function updateNoiseValsAndRedraw() {
+		runner.stop();
+	
+		seed. 
+		noise = new Noise(Number(ui.noiseSize.getContent()));
+
+	function updateFractalValsAndRedraw() {
+		runner.stop();
+
+		fractal.setOctaves(Number(ui.numOctaves.getContent())>>0);
+		fractal.setBaseFreq(Number(ui.baseFreq.getContent()));
+		fractal.setOctaveFreqFactor(Number(ui.freqFactor.getContent()));
+		fractal.setBaseAmpl(Number(ui.baseAmpl.getContent()));
+		fractal.setOctaveAmplFactor(Number(ui.amplFactor.getContent()));
+		fractal.setScaleFactor(Number(ui.scaleFactor.getContent()));
+
+		fractalView.resetZ();
+		const pixelSize = 2.0 / Math.min(img.width(), img.height());
+		fractalView.setPixelSize(pixelSize);
+
+		drawScene();
+	}
+
+	function updateZVal() {
+		z = Number(ui.zValue.getContent());
+		fractalView.setZ(z);
+		drawScene();
+	}
+
+	function updateZAndDraw() {
+		z = fractalView.getZ();
+		z += fractalView.getPixelSize();
+		ui.zValue.setContent(z);
+		fractalView.setZ(z);
+		drawScene();
+	}
+
+	let ui = {};
+	let runner;
+
+	function startRunning() {
+		runner.start();
+	}
+
+	function stopRunning() {
+		runner.stop();
+	}
+
+	function updateGoButton() {
+		if (runner.running()) {
+			ui.goStopButton.updateState('Stop', stopRunning); // cannot pass runner.stop here
+		} else {
+			ui.goStopButton.updateState('Run', startRunning); // cannot pass runner.start here
+		}
+	}
+
+	function buildUI() {
+		randomDiv = uiRandomDiv(ui, applyRandomSeed);
+		noiseFractalDiv = uiNoiseFractalDiv(ui, updateFractalValsAndRedraw, refreshNoiseAndRedraw);
+		ui.zValue = new TextEntry('textField', 'zVal', 0.0, 'Z-value for noise (x & y from pixel)');
+		ui.updateZButton = new PushButton('button', 'updateZ', 'Update Z', updateZVal);
+		ui.goStopButton = new PushButton('button', 'go_stop', '');
+
+		const controlsDiv = document.getElementById('controls');
+		controlsDiv.appendChild(noiseFractalDiv);
+		controlsDiv.appendChild(document.createElement('br'));
+		ui.zValue.appendToElement(controlsDiv);
+		ui.updateZButton.appendToElement(controlsDiv);
+		ui.goStopButton.appendToElement(controlsDiv);
+
+		runner = new Runner(updateGoButton, updateGoButton, updateZAndDraw, 500, undefined);
+	}
+
+	function initFromParams() {
+	}
+	
+	window.onload = function() {
+		buildUI();
+		initFromParams();
+		updateGoButton();
+		initImage();
+		initViewers();
+		clearScene();
+		updateFractalValsAndRedraw();
+	}
+</script>
+<style>
+	* {
+		font-family: sans-serif;
+		background-color: #222222;
+		color: #aaaaaa;
+		margin: 2px;
+	}
+	.button {
+		background-color: #444444;
+		border: 1px solid #aaaaaa;
+		padding: 5px 10px;
+		border-radius: 4px;
+	}
+	.button:hover {
+		background-color: #555555;
+	}
+	.button:active {
+		background-color: #666666;
+	}
+	div.horiz {
+		float: left;
+	}
+	label.rb_label {
+		margin-right: 10px;
+	}
+</style>
+</head>
+<body>
+	<h1>Noise Fractal</h1>
+	<div class="horiz" id="canvas">
+		<canvas width="800" height="600" id="noiseFractal"></canvas>
+	</div>
+	<div class="horiz" id="controls">
+	</div>
+</body>
+</html>

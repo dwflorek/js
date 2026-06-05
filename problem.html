@@ -1,0 +1,61 @@
+<html>
+	<head>
+		<script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+	</head>
+	<body>
+		<div id="instructions">
+			<ol>
+				<li>
+					Change the <code>10</code>, next to the <code>TODO</code> comment, so that an estimate of the mathematical constant PI is calculated.<br/>
+					<strong>DO NOT CHANGE ANYTHING FOR THIS STEP OTHER THAN THIS <code>10</code></strong>
+				</li>
+				<br/>
+				<li>
+					Generalize the code further so it produces the following output;<br/>
+					<code>(***)</code> should be replaced by the actual estimate.<br/>
+					Modify the code as little and as elegantly as possible.
+				</li>
+			</ol>
+		</div>
+		<!-- NOTHING TO CHANGE ABOVE THIS LINE -->
+		<div id="app">
+			<div style="clear: left">
+				<div
+					v-for="(numberOfBars, idx) in numberOfBarsList"
+					:style="{ clear: 'left' }"
+				>
+					<div 
+						v-for="(y, i) in bars(numberOfBars)"
+						:key="i"
+						:style="{ width: scale, height: numberOfBars * scale, float: 'left', borderTop: (y * scale) + 'px solid blue' }"
+					>
+					</div>
+					Number Of Bars = {{ numberOfBars }}
+					<br/>
+					PI = {{ bars(numberOfBars).reduce((a, b) => a + 4 * b/(numberOfBars*numberOfBars), 0) }}
+				</div>
+			</div>
+		</div>
+
+		<script>
+		const app = new Vue({
+			el: '#app',
+			methods: {
+				bars (numberOfBars) {
+					const bars = []
+					for (let i = 0; i < numberOfBars; i++) {
+						bars.push(Math.sqrt(numberOfBars * numberOfBars - i * i))
+					}
+					return bars
+				},
+			},
+			data () {
+				return {
+					scale: 2,
+					numberOfBarsList: [30, 60, 90],
+				}
+			},
+		})
+		</script>
+	</body>
+</html>

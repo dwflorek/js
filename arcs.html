@@ -1,0 +1,233 @@
+<html>
+<head>
+<title>Arcs</title>
+<script src="mathUtils.js"></script>
+<script src="sincos.js"></script>
+<script src="img.js"></script>
+<script src="color.js"></script>
+<script src="automation.js"></script>
+<script src="ui.js"></script>
+<script>
+	function getRandomColor() {
+		//const h = randomOn(0.0, 1.0);
+		//const s = 1.0;
+		const h = randomOn(0.5, 0.7);
+		// s = 1 @ h = 0.5, s = 0.3 @ h = 0.6667 -> s = 0.3 + 0.7*(|0.6667 - h|*6)
+		const s = 0.3 + 0.7*(Math.abs(0.6667 - h)*6);
+		const v = randomOn(0.5, 1.0);
+		const rgb = hsvToRgb(h, s, v);
+	        return [to8Bit(rgb[0]), to8Bit(rgb[1]), to8Bit(rgb[2]), 255];
+	}
+
+	let img = null;
+	let arcs=[];
+
+	class Arc {
+		constructor(xCenter, yCenter, radius, startDegrees, endDegrees, color) {
+			this.x = xCenter;
+			this.y = yCenter;
+			this.r = radius;
+			this.startDegrees = startDegrees;
+			this.endDegrees = endDegrees;
+			this.color = color;
+		}
+
+		fastDraw(img, scServer, pointSpacing) {
+			const dAng = pointSpacing * (Math.atan(1.0/this.r) * 180.0/Math.PI)
+			           * Math.sign(this.endDegrees - this.startDegrees);
+			const numAngSamples = Math.round((this.endDegrees - this.startDegrees) / dAng) >> 0;
+			let ang = this.startDegrees;
+			for (let i = 0; i < numAngSamples; ++i) {
+				const sc = scServer.getSinCos(ang);
+				const x = (this.x + this.r * sc.second()) >> 0;
+				const y = (this.y - this.r * sc.first()) >> 0;
+				img.colorPixelXY(x, y, this.color);
+				ang += dAng;
+			}
+		}
+
+		antiAliasedDraw(img, scServer) {
+		}
+
+		draw(img, scServer) {
+			this.fastDraw(img, scServer, 1.0);
+		}
+
+	}
+
+	function addArc() {
+		const arc = new Arc(
+			ui.centerX.getNumericContent(),
+			ui.centerY.getNumericContent(),
+			ui.radius.getNumericContent(),
+			ui.startDeg.getNumericContent(),
+			ui.endDeg.getNumericContent(),
+			getRandomColor());
+		arcs.push(arc);
+	}
+
+	function randomArc() {
+		const cx = randomOn(img.center()[0] - img.width(), img.center()[0] + img.width());
+		const cy = randomOn(img.center()[1] - img.height(), img.center()[1] + img.height());
+		const r = randomOn(10.0, img.width());
+		const startDegs = randomOn(0.0, 360.0);
+		const endDegs = startDegs + randomOn(15.0, 345.0);
+		ui.centerX.setContent(cx);
+		ui.centerY.setContent(cy);
+		ui.radius.setContent(r);
+		ui.startDeg.setContent(startDegs);
+		ui.endDeg.setContent(endDegs);
+		const arc = new Arc(cx, cy, r, startDegs, endDegs, getRandomColor());
+		arcs.push(arc);
+	}
+
+// ---------------
+
+	const sincosServer = new SinCos(3600);
+
+	let ui = {};
+	let runner = null;
+
+	function drawScene(img) {
+		img.clear([0, 0, 0, 255]);
+		for (let idx = 0; idx < arcs.length; ++idx) {
+			arcs[idx].draw(img, sincosServer);
+			//arcs[idx].fastDraw(img, sincosServer, 5.0);
+		}
+		img.drawToCanvas();
+	}
+
+	function runCb(img) {
+		randomArc();
+		drawScene(img);
+	}
+
+	function addCb(nullData_) {
+		addArc();
+		drawScene(img);
+	}
+
+	function addRandomCb(nullData_) {
+		randomArc();
+		drawScene(img);
+	}
+
+	function clearCb(nullData_) {
+		runner.stop();
+		ui.runStopButton.updateState('Run', startCb);
+		arcs = [];
+		drawScene(img);
+	}
+
+	function startCb(nullData_) {
+		ui.runStopButton.updateState('Stop', stopCb);
+		runner.start();
+	}
+
+	function stopCb(nullData_) {
+		runner.stop();
+		ui.runStopButton.updateState('Run', startCb);
+	}
+
+	let origCanvasWidth, origCanvasHeight;
+
+	function fullscreenChanged(nullData_) {
+		console.log('fullscreenChanged()');
+		let canvas = document.getElementById('arcs');
+		if (origCanvasWidth == undefined && origCanvasHeight == undefined) {
+			console.log('going fullscreen...');
+			console.log(`canvas size: ${canvas.width} x ${canvas.height}`);
+			origCanvasWidth = canvas.width;
+			origCanvasHeight = canvas.height;
+			canvas.width = window.screen.width * window.devicePixelRatio;
+			canvas.height = window.screen.height * window.devicePixelRatio;
+		}
+		else {
+			console.log('is fullscreen, reverting...');
+			canvas.width = origCanvasWidth;
+			canvas.height = origCanvasHeight;
+			origCanvasWidth = undefined;
+			origCanvasHeight = undefined;
+		}
+		img.updateSize();
+		drawScene(img);
+	}
+
+	function fullscreenCb(nullData_) {
+		let canvas = document.getElementById('arcs');
+		canvas.onfullscreenchange = fullscreenChanged;
+		if (canvas.requestFullscreen) {
+			canvas.requestFullscreen().catch(err => {
+				console.error(`Error attempting to enable fullscreen: ${err.message}`);
+			});
+		}
+	}
+
+        function buildUI() {
+		const div = document.getElementById('controls');
+                ui.centerX = new TextEntry('textField', 'centerX', 400, 'Center X');
+                ui.centerY = new TextEntry('textField', 'centerY', 300, 'Center Y');
+                ui.radius = new TextEntry('textField', 'radius', 100, 'Radius');
+                ui.startDeg = new TextEntry('textField', 'startDeg', 30, 'Start Angle (degrees)');
+                ui.endDeg = new TextEntry('textField', 'endDeg', 0.5, 'End Angle (degrees)');
+
+                ui.addButton = new PushButton('button', 'add', 'Add', addCb);
+                ui.addRandomButton = new PushButton('button', 'addRandom', 'Add Random', addRandomCb);
+		ui.clearButton = new PushButton('button', 'clear', 'Clear', clearCb);
+		ui.runStopButton = new PushButton('button', 'runStop', 'Run', startCb);
+		ui.fullscreenButton = new PushButton('button', 'fullscreen', 'Full Screen', fullscreenCb);
+
+                ui.centerX.appendToElement(div);
+                ui.centerY.appendToElement(div);
+                ui.radius.appendToElement(div);
+                ui.startDeg.appendToElement(div);
+                ui.endDeg.appendToElement(div);
+                div.appendChild(document.createElement('br'));
+                ui.addButton.appendToElement(div);
+                ui.addRandomButton.appendToElement(div);
+                ui.clearButton.appendToElement(div);
+                ui.runStopButton.appendToElement(div);
+                div.appendChild(document.createElement('br'));
+		ui.fullscreenButton.appendToElement(div);
+	}
+
+	window.onload = function() {
+		img = new Img('arcs');
+		buildUI();
+		drawScene(img);
+		runner = new Runner(null, null, runCb, 100, img);
+	}
+</script>
+<style>
+	* {
+		font-family: sans-serif;
+		background-color: #222222;
+		color: #aaaaaa;
+		margin: 2px;
+	}
+	.button {
+		backgrourd-color: #444444;
+		border: 1px solid #aaaaaa;
+		padding: 5px 10px;
+		border-radius: 4px;
+	}
+	.button:hover {
+		background-color: #555555;
+	}
+	.button:active {
+		background-color: #666666;
+	}
+	div.horiz {
+		float: left;
+	}
+</style>
+</head>
+<body>
+	<h1>Arcs</h1>
+	<div class="horiz" id="canvas">
+		<canvas width="800" height="600" id="arcs"></canvas>
+	</div>
+	<div class="horiz" id="controls">
+	</div>
+</body>
+</html>

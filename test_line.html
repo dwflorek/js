@@ -1,0 +1,87 @@
+<html>
+<head>
+<title>Test line.js</title>
+<script src="mathUtils.js"></script>
+<script src="window.js"></script>
+<script src="img.js"></script>
+<script src="color.js"></script>
+<script src="vector4.js"></script>
+<script src="matrix4.js"></script>
+<script src="line.js"></script>
+<script>
+	let img = null;
+
+	const gray  = new Vector4(0.5, 0.5, 0.5, 1.0);
+	const red   = new Vector4(1.0, 0.0, 0.0, 1.0);
+	const green = new Vector4(0.0, 1.0, 0.0, 1.0);
+	const blue  = new Vector4(0.2, 0.2, 1.0, 1.0);
+
+	// specify origin and axis-endpoints in NDC space (pre-apply a skewed orthographic projection)
+	const oPt = new Vector4(0.0, 0.0, 0.0, 1.0);
+	const xPt = new Vector4(0.9, 0.0, 0.0, 1.0);
+	const yPt = new Vector4(0.0, 0.9, 0.0, 1.0);
+	const zPt = new Vector4(0.2, 0.2, 0.9, 1.0);
+
+	const lines = [
+		new Line(oPt, gray, xPt, red),
+		new Line(oPt, gray, yPt, green),
+		new Line(oPt, gray, zPt, blue)
+	];
+
+	function toNDC() {
+		// since points are in NDC-space, this is a no-op: apply the identity-matrix
+		ident = new Matrix4();
+		for (let idx = 0; idx < lines.length; ++idx) {
+			lines[idx].transform(ident);
+		}
+	}
+
+	function drawScene(win) {
+		win.img.clear([48, 0, 48, 255]);
+		win.clear([0, 0, 0, 255]);
+		for (let idx = 0; idx < lines.length; ++idx) {
+			lines[idx].drawToWindow(win);
+		}
+		win.img.drawToCanvas();
+	}
+
+	window.onload = function() {
+		img = new Img('Test');
+		win = new Window(img, 100, 100, 400, 400);
+		toNDC();
+		drawScene(win);
+	}
+</script>
+<style>
+	* {
+		font-family: sans-serif;
+		background-color: #222222;
+		color: #aaaaaa;
+		margin: 2px;
+	}
+	.button {
+		background-color: #444444;
+		border: 1px solid #aaaaaa;
+		padding: 5px 10px;
+		border-radius: 4px;
+	}
+	.button:hover {
+		background-color: #555555;
+	}
+	.button:active {
+		background-color: #666666;
+	}
+	div.horiz {
+		float: left;
+	}
+</style>
+</head>
+<body>
+	<h1>Test line.js</h1>
+	<div class="horiz" id="canvas">
+		<canvas width="800" height="600" id="Test"></canvas>
+	</div>
+	<div class="horiz" id="controls">
+	</div>
+</body>
+</html>

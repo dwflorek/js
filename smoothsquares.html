@@ -1,0 +1,385 @@
+<html>
+<head>
+<title>SmoothSquares</title>
+<script>
+	class PushButton {
+		constructor(className, elementId, text, callback) {
+			this.label = document.createTextNode(text);
+			this.callback = callback;
+
+			this.element = document.createElement('button');
+			this.element.setAttribute('type', 'button');
+			this.element.setAttribute('class', className);
+			this.element.setAttribute('id', elementId);
+			this.element.appendChild(this.label);
+			this.element.addEventListener("click", callback);
+		}
+		appendToElement(el) {
+			el.appendChild(this.element);
+		}
+		getAttribute(attr) {
+			return this.element.getAttribute(attr);
+		}
+		updateState(text, callback) {
+			this.label.remove();
+			this.label = document.createTextNode(text);
+			this.element.appendChild(this.label);
+
+			this.element.removeEventListener("click", this.callback);
+			this.element.addEventListener("click", callback);
+			this.callback = callback;
+		}
+	}
+
+	function randomOn(a, b) {
+		return a + Math.random() * (b - a);
+	}
+
+	function wrapOntoZeroOne(val) {
+		let isNeg = false;
+		if (val < 0.0) {
+			isNeg = true;
+			val = -val;
+		}
+		val = val - (val>>0);
+		if (isNeg) {
+			val = 1.0 - val;
+		}
+		return val;
+	}
+
+	function hsvToRgb(hue, sat, val) {
+		hue = wrapOntoZeroOne(hue);
+                hue = hue * 6;
+		const hBand = hue>>0;
+		const hFrac = hue - hBand;
+		const high = val;
+		const low = (1.0 - sat)*high;
+		const mid1 = low + hFrac*(high - low);;
+		const mid2 = high - hFrac*(high - low);;
+		if (hBand == 0) {
+			return [high, mid1, low];
+		}
+		if (hBand == 1) {
+			return [mid2, high, low];
+		}
+		if (hBand == 2) {
+			return [low, high, mid1];
+		}
+		if (hBand == 3) {
+			return [low, mid2, high];
+		}
+		if (hBand == 4) {
+			return [mid1, low, high];
+		}
+		else {
+			return [high, low, mid2];
+		}
+	}
+
+	function clamp(x, lo, hi) {
+		if (x < lo) {
+			return lo;
+		}
+		if (x > hi) {
+			return hi;
+		}
+		return x;
+	}
+
+	function to8Bit(x) {
+		const i = (256*x)>>0;
+		return clamp(i, 0, 255);
+	}
+
+	class Squares {
+
+		static #squares = [];
+
+		static clear() {
+			Squares.#squares = [];
+		}
+		static populate(imgData) {
+			const w = randomOn(40, 100) >> 2;
+			const numAcross = (imgData.width / (w + 2)) >> 0;
+			const startX = ((imgData.width - numAcross*w - (numAcross-1)*2) / 2) >> 0;
+			const h = randomOn(40, 100) >> 2;
+			const numDown = (imgData.height / (h + 2)) >> 0;
+			const startY = ((imgData.height - numDown*h - (numDown-1)*2) / 2) >> 0;
+			for (let y = 0; y < numDown; ++y) {
+				for (let x = 0; x < numAcross; ++x) {
+					Squares.#squares.push(new Square(startX + x*(w+2), startY + y*(h+2), w, h));
+				}
+			}
+		}
+		static update(colorServer) {
+			const t = Date.now();
+			for (let s = 0; s < Squares.#squares.length; ++s) {
+				Squares.#squares[s].update(colorServer, t);
+			}
+		}
+		static draw(imgData) {
+			const t = Date.now();
+			for (let s = 0; s < Squares.#squares.length; ++s) {
+				Squares.#squares[s].draw(imgData, t);
+			}
+		}
+	}
+
+	function scaleColor(c, s) {
+		return [c[0]*s, c[1]*s, c[2]*s];
+	}
+
+	function addColor(c1, c2) {
+		return [c1[0]+c2[0], c1[1]+c2[1], c1[2]+c2[2]];
+	}
+
+	function mixColor(c1, s1, c2, s2) {
+		return addColor(scaleColor(c1, s1), scaleColor(c2, s2));
+	}
+
+	function fadeColor(c1, c2, t) {
+		// return c1 + t(c2 - c1);
+		// return c1*(1-t) + c2*t;
+		return mixColor(c1, 1.0-t, c2, t);
+	}
+
+	class Square {
+		constructor(x, y, w, h) {
+			this.x = x;
+			this.y = y;
+			this.w = w;
+			this.h = h;
+
+			this.cx = this.x + (this.w - 1)/2.0;
+			this.cy = this.y + (this.h - 1)/2.0;
+
+			this.startColor = undefined;
+			this.endColor = undefined;
+			this.startT = undefined;
+			this.endT = undefined;
+		}
+
+		update(colorServer, t) {
+			if (this.startColor === undefined) {
+				this.startColor = colorServer.getColor(this.cx, this.cy);
+				this.endColor = colorServer.getColor(this.cx, this.cy);
+				this.startT = t + 1000.0*randomOn(0.1, 1.5);
+				this.endT = this.startT + 1000.0*randomOn(0.5, 1.0);
+			}
+			else if (t > this.endT) {
+				this.startColor = this.endColor;
+				this.endColor = colorServer.getColor(this.cx, this.cy);
+				this.startT = this.endT + 1000.0*randomOn(1.0, 3.0);
+				this.endT = this.startT + 1000.0*randomOn(0.5, 2.0);
+			}
+		}
+
+		draw(imageData, t) {
+			let curColor;
+			if (this.startT === undefined) {
+				curColor = [44, 44, 44];
+			}
+			else {
+				if (t < this.startT) {
+					curColor = this.startColor;
+				}
+				else if (t > this.endT) {
+					curColor = this.endColor;
+				}
+				else {
+					curColor = fadeColor(this.startColor, this.endColor,
+					                     (t - this.startT)/(this.endT - this.startT));
+				}
+			}
+			for (let y = this.y; y < this.y + this.h; ++y) {
+				let pixelIndex = (y * imageData.width + this.x) * 4;
+				for (let x = this.x; x < this.x + this.w; ++x) {
+					colorPixel(
+						imageData, pixelIndex,
+						[curColor[0]>>0, curColor[1]>>0, curColor[2]>>0, 255]);
+					pixelIndex += 4;
+				}
+			}
+		}
+	}
+
+	function colorPixel(imageData, pixelIndex, color) {
+                imageData.data[pixelIndex] = color[0];
+                imageData.data[pixelIndex+1] = color[1];
+                imageData.data[pixelIndex+2] = color[2];
+                imageData.data[pixelIndex+3] = color[3];
+	}
+		
+	function clearImage(imageData, color) {
+		var row, col, pidx;
+		pidx = 0;
+		for (row = 0; row < imageData.height; ++row) {
+			for (col = 0; col < imageData.width; ++col) {
+				colorPixel(imageData, pidx, color);
+				pidx += 4;
+			}
+		}
+	}
+
+	class ColorServer {
+		constructor() {
+			this.colors = [];
+		}
+
+		repopulate() {
+			this.colors = [];
+			const numColors = randomOn(3, 11) >> 0;
+			const minHue = randomOn(0.0, 1.0);
+			const maxHue = minHue + randomOn(0.05, 0.3);
+			const minSat = 0.7;
+			const maxSat = 1.0;
+			const minVal = 0.5;
+			const maxVal = 1.0;
+			for (let c = 0; c < numColors; ++c) {
+				const hue = randomOn(minHue, maxHue);
+				const sat = randomOn(minSat, maxSat);
+				const val = randomOn(minVal, maxVal);
+				const rgbVals = hsvToRgb(hue, sat, val);
+				this.colors.push( [to8Bit(rgbVals[0]), to8Bit(rgbVals[1]), to8Bit(rgbVals[2]), 255] );
+			}
+		}
+
+		getColor(x, y) {
+			// x & y could be used e.g. to index into a 2D colormap (like a loaded image)
+			if (this.colors.length == 0) {
+				return [44, 44, 44, 255];
+			}
+			else {
+				const c = randomOn(0, this.colors.length) >> 0;
+				return this.colors[c];
+			}
+		}
+	}
+
+	let colorServer = new ColorServer();
+	let imgData;
+	let ctx;
+
+	function drawScene() {
+		if (imgData === undefined) {
+			const canvas = document.getElementById('squares');
+			ctx = canvas.getContext("2d");
+			imgData = ctx.createImageData(canvas.width, canvas.height); // match to canvas (for now)
+		}
+	
+		clearImage(imgData, [0, 0, 0, 255]); // [34, 22, 84, 255]);
+		Squares.draw(imgData);
+		ctx.putImageData(imgData, 0, 0);
+	}
+	
+	function reset() {
+		stopRunning();
+		colorServer.repopulate();
+		Squares.clear();
+		Squares.populate(imgData);
+		Squares.update(colorServer);
+		drawScene();
+	}
+
+	let isRunning = false;
+	let updateTimer = null;
+	let redrawTimer = null;
+	let fadeTimeout = null;
+
+	function updateGoButton() {
+		if (isRunning) {
+			ui.goStopButton.updateState('Stop', stopRunning);
+		} else {
+			ui.goStopButton.updateState('Run', startRunning);
+		}
+	}
+
+	function stopRedraw() {
+		fadeTimeout = null;
+		clearInterval(redrawTimer);
+		redrawTimer = null;
+	}
+
+	function startRunning() {
+		if (!isRunning) {
+			if (fadeTimeout !== null) {
+				clearTimeout(fadeTimeout);
+				stopRedraw();
+			}
+			isRunning = true;
+			updateGoButton();
+			redrawTimer = setInterval(drawScene, 25);
+			updateTimer = setInterval(Squares.update, 100, colorServer);
+		}
+	} 
+
+	function stopRunning() {
+		if (isRunning) {
+			isRunning = false;
+			clearInterval(updateTimer);
+			updateTimer = null;
+			fadeTimeout = setTimeout(stopRedraw, 5000);
+			updateGoButton();
+		}
+	}
+
+	let ui = {};
+
+	function buildUI() {
+		ui.clearButton = new PushButton('button', 'clear', 'Clear', reset);
+		ui.goStopButton = new PushButton('button', 'go_stop', '');
+
+		const controlsDiv = document.getElementById('controls');
+		ui.clearButton.appendToElement(controlsDiv);
+		ui.goStopButton.appendToElement(controlsDiv);
+	}
+
+	function initFromParams() {
+	}
+	
+	window.onload = function() {
+		buildUI();
+		initFromParams();
+		updateGoButton();
+		Squares.clear();
+		drawScene();
+		colorServer.repopulate();
+		Squares.populate(imgData);
+		Squares.update(colorServer);
+		drawScene();
+	}
+</script>
+<style>
+	* {
+		font-family: sans-serif;
+		background-color: #222222;
+		color: #aaaaaa;
+		margin: 2px;
+	}
+	.button {
+		background-color: #444444;
+		border: 1px solid #aaaaaa;
+		padding: 5px 10px;
+		border-radius: 4px;
+	}
+	.button:hover {
+		background-color: #555555;
+	}
+	.button:active {
+		background-color: #666666;
+	}
+	div.horiz {
+		float: left;
+	}
+</style>
+</head>
+<body>
+	<h1>SmoothSquares</h1>
+	<div class="horiz" id="canvas">
+		<canvas width="800" height="600" id="squares"></canvas>
+	</div>
+	<div class="horiz" id="controls">
+	</div>
+</body>
+</html>

@@ -1,0 +1,364 @@
+<html>
+<head>
+<title>Stripes</title>
+<script>
+	function getNumericFromUI(elementId, defaultVal) {
+		var value = document.getElementById(elementId).value;
+		if (value === undefined || value === null || value === '') {
+			value = defaultVal;
+			document.getElementById(elementId).value = value;
+		}
+		return Number(value);
+	}
+
+	function randomOn(a, b) {
+		return a + Math.random() * (b - a);
+	}
+
+	function wrapOntoZeroOne(val) {
+		var isNeg = false;
+		if (val < 0.0) {
+			isNeg = true;
+			val = -val;
+		}
+		val = val - (val>>0);
+		if (isNeg) {
+			val = 1.0 - val;
+		}
+		return val;
+	}
+		
+	function hsvToRgb(hue, sat, val) {
+		hue = wrapOntoZeroOne(hue);
+                hue = hue * 6;
+		var hBand = hue>>0;
+		var hFrac = hue - hBand;
+		var high = val;
+		var low = (1.0 - sat)*high;
+		var mid1 = low + hFrac*(high - low);;
+		var mid2 = high - hFrac*(high - low);;
+		if (hBand == 0) {
+			return [high, mid1, low];
+		}
+		if (hBand == 1) {
+			return [mid2, high, low];
+		}
+		if (hBand == 2) {
+			return [low, high, mid1];
+		}
+		if (hBand == 3) {
+			return [low, mid2, high];
+		}
+		if (hBand == 4) {
+			return [mid1, low, high];
+		}
+		else {
+			return [high, low, mid2];
+		}
+	}
+
+	function clamp(x, lo, hi) {
+		if (x < lo) {
+			return lo;
+		}
+		if (x > hi) {
+			return hi;
+		}
+		return x;
+	}
+
+	function to8Bit(x) {
+		var i = (256*x)>>0;
+		return clamp(i, 0, 255);
+	}
+
+	var minHue = 0.2;
+	var maxHue = 0.4;
+
+	function getRandomColor() {
+		var val = randomOn(0.7, 1.0);
+		var sat = randomOn(0.5, 1.0);
+		var hue = randomOn(minHue, maxHue);
+                var rgb = hsvToRgb(hue, sat, val);
+		return [to8Bit(rgb[0]), to8Bit(rgb[1]), to8Bit(rgb[2])]
+	}
+
+	var lines = [];
+
+	// object constructor
+	function Line(angle, dist, thick, gamma, color) {
+		this.ang = angle;
+		this.dist = dist;
+		this.thick = thick;
+		this.gamma = gamma;
+		this.color = color;
+	}
+
+	function addLine() {
+		const line = new Line(
+			getNumericFromUI('angle', 0.0),
+			getNumericFromUI('distance', 0.0),
+			getNumericFromUI('thickness', 10),
+			getNumericFromUI('gamma', 1.0),
+			getRandomColor());
+		console.log(
+			"line:", lines.length, " ang:", line.ang, " dist:", line.dist,
+			" thick:", line.thick, " gamma:", line.gamma,
+			" color:", line.color[0], line.color[1], line.color[2]);
+		lines.push(line);
+		drawLines();
+	}
+
+	function addRandomLine() {
+		document.getElementById('angle').value = randomOn(0.0, 360.0);
+		document.getElementById('distance').value = randomOn(0.0, 400.0);
+		document.getElementById('thickness').value =  randomOn(5.0, 20.0);
+		if (randomOn(0.0, 1.0) < 0.5) {
+			document.getElementById('gamma').value =  randomOn(0.1, 1.0); 
+		} else {
+			document.getElementById('gamma').value =  randomOn(1.0, 10.0);
+		}
+		addLine();
+	}
+
+	function colorPixel(imageData, pixelIndex, color) {
+                imageData.data[pixelIndex] = color[0];
+                imageData.data[pixelIndex+1] = color[1];
+                imageData.data[pixelIndex+2] = color[2];
+                imageData.data[pixelIndex+3] = color[3];
+	}
+		
+	function clearImage(imageData, width, height, color) {
+		var row, col, pidx;
+		pidx = 0;
+		for (row = 0; row < width; ++row) {
+			for (col = 0; col < width; ++col) {
+				colorPixel(imageData, pidx, color);
+				pidx += 4;
+			}
+		}
+	}
+
+	function compositePixel(color, imageData, pixelIndex) {
+		var base = [
+			imageData.data[pixelIndex],
+			imageData.data[pixelIndex+1],
+			imageData.data[pixelIndex+2],
+			imageData.data[pixelIndex+3],
+		]
+		var outColor = [];
+		var baseAlpha = base[3]/255.0;
+                var alpha = color[3]/255.0;
+                var outAlpha = alpha + baseAlpha*(1.0 - alpha);
+                var i;
+                for (i = 0; i < 3; ++i) {
+                	outColor.push(
+				Math.round((color[i]*alpha + base[i]*baseAlpha*(1.0 - alpha)) / outAlpha)>>0
+			);
+		}
+                outColor.push( Math.round(255 * outAlpha)>>0 );
+		colorPixel(imageData, pixelIndex, outColor);
+	}
+	
+	function drawLine(imageData, width, height, line) {
+		// (1) The nearest point P on line(angle, distance) to origin is at: Px=d*cos(ang), Py=d*sin(ang)
+		// (2) Other points Q on the line are P + tV where Vx = sin(ang), y=-cos(ang), t=[-inf,inf]
+		// (3) The distance of any arbitrary point R from the line Q = P + tV is u, where
+		//     R = P + vV + uU, for U a unit vector perpendicular to V (and the line) in the direction of R
+		//     R - P = vV + uU
+		//     cos(ang((R - P)), V) = v / |(R - P)|
+		//     but (R - P) . V = |(R - P)| * |V| * cos(ang((R - P), V)), |V| = 1
+		//     -> cos(ang) = (R - P)/|(R - P)| . V
+		//     -> v / |(R - P)| = ((R - P) . V) / |(R - P)|
+		//     -> v = (R - P) . V
+		//     let r = |(R - P)| = sqrt((R - P) . (R - P))
+		//     u = sqrt(r^2 - v^2)
+		var c_ang = Math.cos(Math.PI/180.0 * line.ang);
+		var s_ang = Math.sin(Math.PI/180.0 * line.ang);
+		var px = line.dist * c_ang;
+		var py = line.dist * s_ang;
+		var vx = s_ang;
+		var vy = -c_ang;
+		var thick_s = 1.0 / (line.thick / 2.0);
+		var gamma_e = 1.0 / line.gamma;
+		var color = line.color;
+		var pixelIndex = 0;
+		for (var row = 0;  row < height; ++row) {
+			var ry = -(row - (height - 1) / 2.0); // flip from +row-down to +y-up
+			for (var col = 0; col < width; ++col) {
+				// find u = dist from mathematical line
+				var rx = col - (width - 1) / 2.0;
+				var r_sqrd = (rx - px)*(rx - px) + (ry - py)*(ry - py);
+				var v = (rx - px)*vx + (ry - py)*vy;
+				var u = Math.sqrt(r_sqrd - v*v);
+				// find alpha based on dist, thickness & gamma, composite onto image if alpha > 0
+				u = 1.0 - (u * thick_s);
+				if (u > 0.0) {
+					u = Math.pow(u, gamma_e);
+					color[3] = (Math.round(255 * u))>>0;
+					compositePixel(color, imageData, pixelIndex);
+				}
+				pixelIndex += 4;
+			}
+		}
+	}
+
+	function drawLines() {
+		var canvas = document.getElementById('stripes');
+		var width = canvas.width;
+		var height = canvas.height;
+		var ctx = canvas.getContext("2d");
+		var imgData = ctx.createImageData(width, height); // match to canvas (for now)
+	
+		clearImage(imgData, width, height, [0, 0, 0, 255]); // [34, 22, 84, 255]);
+		//ctx.putImageData(imgData, 0, 0);
+
+		var line;
+		for (line = 0; line < lines.length; ++line) {
+			drawLine(imgData, width, height, lines[line]);
+		}
+		ctx.putImageData(imgData, 0, 0);
+	}
+	
+	function drawColors() {
+		// TODO: see if there's an HTML element I can custom-color here, vs a canvas
+		var canvas = document.getElementById('colorsSample');
+		var width = canvas.width;
+		var height = canvas.height;
+		var ctx = canvas.getContext("2d");
+		var imgData = ctx.createImageData(width, height); // match to canvas (for now)
+	
+		for (var x = 0; x < width; ++x) {
+			var u = x / (width - 1.0);
+			var hue = minHue + u * (maxHue - minHue);
+			var rgb = hsvToRgb(hue, 1.0, 0.6);
+			var color = [to8Bit(rgb[0]), to8Bit(rgb[1]), to8Bit(rgb[2]), 255];
+			var pidx = x*4;
+			for (var y = 0; y < height; ++y) {
+				colorPixel(imgData, pidx, color);
+				pidx += 4*width;;
+			}
+		}
+
+		ctx.putImageData(imgData, 0, 0);
+	}
+
+	function pickRandomHueRange() {
+		minHue = randomOn(0.0, 1.0);
+		var hueDist = 0.1 + 0.9*Math.pow(randomOn(0.0, 1.0), 2.0); // emphasize smaller values
+		maxHue = minHue + hueDist;
+	}
+
+	function newColors() {
+		pickRandomHueRange();
+		drawColors();
+	}
+
+	function reset() {
+		stopRunning();
+		lines = [];
+		drawLines();
+	}
+
+	var isRunning = false;
+	var runTimer;
+
+	function updateGoButton() {
+		var button = document.getElementById("go_stop");
+		if (isRunning) {
+			button.removeEventListener("click", startRunning);
+			button.addEventListener("click", stopRunning);
+			button.innerHTML = "Stop";
+		}
+		else {
+			button.removeEventListener("click", stopRunning);
+			button.addEventListener("click", startRunning);
+			button.innerHTML = "Run";
+		}
+	}
+
+	function startRunning() {
+		if (!isRunning) {
+			isRunning = true;
+			updateGoButton();
+			runTimer = setInterval(addRandomLine, 500);
+		}
+	} 
+
+	function stopRunning() {
+		if (isRunning) {
+			isRunning = false;
+			clearInterval(runTimer);
+			updateGoButton();
+		}
+	}
+
+	function initFromParams() {
+	}
+	
+	window.onload = function() {
+		initFromParams();
+		updateGoButton();
+		drawColors();
+		lines = [];
+		drawLines();
+	}
+</script>
+<style>
+	* {
+		font-family: sans-serif;
+		background-color: #222222;
+		color: #aaaaaa;
+		margin: 2px;
+	}
+	.button {
+		background-color: #444444;
+		border: 1px solid #aaaaaa;
+		padding: 5px 10px;
+		border-radius: 4px;
+	}
+	.button:hover {
+		background-color: #555555;
+	}
+	.button:active {
+		background-color: #666666;
+	}
+
+	input[type="text"] {
+		background-color: #333333;
+		border: 1px solid #555555;
+		border-radius: 2px;
+	}
+	div.horiz {
+		float: left;
+	}
+
+</style>
+</head>
+<body>
+	<h1>Stripes</h1>
+	<div class="horiz" id="canvas">
+		<canvas width="800" height="600" id="stripes"></canvas>
+	</div>
+	<div class="horiz" id="controls">
+		<input type="text" class="textField" id="angle">
+		<label for="angle">Angle (0 = east, 90 = north ...)</label><br/>
+		<input type="text" class="textField" id="distance">
+		<label for="distance">Distance from center</label><br/>
+		<input type="text" class="textField" id="thickness">
+		<label for="thickness">Thickness (in pixels)</label><br/>
+		<input type="text" class="textField" id="gamma">
+		<label for="gamma">Gamma (low=more transparent, high=more opaque)</label><br/>
+		<button class="button" type="button" onclick="addLine()">Add</button>
+		<button class="button" type="button" onclick="addRandomLine()">Add Random</button>
+		<button class="button" type="button" onclick="reset()">Clear</button>
+		<button class="button" type="button" id="go_stop" ></button></br>
+		<div class="horiz">
+			<button class="button" type="button" onclick="newColors()">New Colors</button>
+		</div>
+		<div class="horiz">
+			<canvas width="200" height="30" id="colorsSample"></canvas>
+		</div>
+	</div>
+</body>
+</html>

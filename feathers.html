@@ -1,0 +1,260 @@
+<html>
+<head>
+<title>Feathers?</title>
+<script src="mathUtils.js"></script>
+<script src="img.js"></script>
+<script src="color.js"></script>
+<script src="automation.js"></script>
+<script>
+	let img = null;
+	let traces = [];
+
+	class Tuple {
+		constructor(v1, v2) {
+			this.v1 = v1;
+			this.v2 = v2;
+		}
+
+		first() {
+			return this.v1;
+		}
+
+		second() {
+			return this.v2;
+		}
+	}
+
+	class SinCos {
+		constructor(nDivs) {
+			this.nDivs = nDivs;
+			this.sincoss = [];
+			const dAng = 2*Math.PI / nDivs;
+			let ang = 0.0;
+			for (let i = 0; i < nDivs; ++i) {
+				this.sincoss.push(new Tuple(Math.sin(ang), Math.cos(ang)));
+				ang += dAng;
+			}
+		}
+		
+		getIndex(degrees) {
+			let idx = undefined;
+			if (degrees < 0) {
+				degrees = -degrees;
+				idx = (degrees * this.nDivs / 360.0) >> 0;
+				idx = idx % this.nDivs;
+				if (idx > 0) {
+					idx = this.nDivs - idx;
+				}
+			}
+			else {
+				idx = (degrees * this.nDivs / 360.0) >> 0;
+				idx = idx % this.nDivs;
+			}
+			return idx;
+		}
+
+		getSin(degrees) {
+			const idx = this.getIndex(degrees);
+			return this.sincoss[idx].first();
+		}
+
+		getCos(degrees) {
+			const idx = this.getIndex(degrees);
+			return this.sincoss[idx].second();
+		}
+
+		getSinCos(degrees) {
+			const idx = this.getIndex(degrees);
+			return this.sincoss[idx];
+		}
+	}
+
+	class Arc {
+		constructor(x, y, r, startDegrees, endDegrees, color) {
+			this.x = x;
+			this.y = y;
+			this.r = r;
+			this.startDegrees = startDegrees;
+			this.endDegrees = endDegrees;
+			this.color = color;
+		}
+
+		draw(img, scServer) {
+			let ang = this.startDegrees;
+			const dAng = 0.7 * Math.atan(1.0/this.r) * 180.0/Math.PI * Math.sign(this.endDegrees - this.startDegrees);
+			const numAngSamples = (((endAng - ang) / dAng) >> 0) + 1;
+			for (let i = 0; i < numAngSamples; ++i) {
+				const sc = scServer.getSinCos(ang);
+				const x = (this.x + this.r * sc.second()) >> 0;
+				const y = (this.y - this.r * sc.first()) >> 0;
+				img.colorPixelXY(x, y, this.color);
+				ang += dAng;
+			}
+		}
+	}
+
+	class Feather {
+		constructor(x, y, vx, vy, curveLeft, minCurveR, maxCurveR, len) {
+			let dx = curveLeft ? -vy : vy;
+			let dy = curveLeft ? vx : -vx; // direction towards center
+			const dLen = Math.sqrt(dx*dx + dy*dy);
+			dx /= dLen;
+			dy /= dLen;
+			const startAng = Math.atan2(-dy, -dx) * 180.0/Math.PI;
+			this.arcs = [];
+			for (let i = 0; i < 10; ++i) {
+				const r = randomOn(minCurveR, maxCurveR);
+				const dAng = len / (2 * Math.PI * r) * 360.0;
+				this.arcs.append(new Arc((x + r*dx)>>0, (y - r*dy)>>0, r, startAng, startAng + (curveLeft ? 1 : -1)*dAng, color));
+			}
+		}
+
+		draw(img) {
+			//img.drawSquare(this.imgPos[0], this.imgPos[1], 10, this.color);
+			img.drawCircle(this.imgPos[0], this.imgPos[1], 5, this.color);
+			for (let idx = 0; idx < this.trailPoints.length; ++idx) {
+				const trailPoint = this.trailPoints[idx];
+				this.color[3] = 255*(1.0 - idx/this.trailPoints.length);
+				img.drawSquare(trailPoint[0], trailPoint[1], 2, this.color);
+				this.color[3] = 255;
+			}
+		}
+	}
+
+
+	const sincosServer = new SinCos(3600);
+	let points = [];
+
+	function polarOf(x, y, img) {
+		const imgCenter = img.center();
+		const halfWidth = imgCenter[0];
+		const px = (x - imgCenter[0]) / halfWidth;
+		const py = (imgCenter[1] - y) / halfWidth;  // keep aspect-ratio square, horiz -1 -> 1, vert -h/w -> h/w
+		return [ Math.sqrt(px*px + py*py), Math.atan2(py, px) ];
+	}
+
+	function randomColor() {
+		return hsvToRgb(randomOn(0.0, 1.0), randomOn(0.7, 1.0), 1.0);
+	}
+
+	function repopulate() {
+		points = [];
+		const numPoints = randomOn(20, 100) >> 0;
+		let i = 0;
+		while (i < numPoints) {
+			// distribute points uniformly across the plane
+			const x = randomOn(0, img.width()) >> 0;
+			const y = randomOn(0, img.height()) >> 0;
+			const polar = polarOf(x, y, img);
+			const r = polar[0];
+			const degs = polar[1] * 180.0/Math.PI;
+			if (r < 0.1) {
+				// not too fast / close-to-center
+				continue;
+			}
+			const revsPerSec = ((1.0 / r) / 10.0) * randomOn(0.9, 1.1);
+			const orbit = new Orbit(r, degs, revsPerSec, sincosServer);
+			const color = randomColor();
+			const color8Bit = [to8Bit(color[0]), to8Bit(color[1]), to8Bit(color[2]), 255];
+			const trailDegs = randomOn(60, 180);
+			points.push(new Point(orbit, color8Bit, trailDegs));
+			i += 1;
+		}
+	}
+
+	let prevT = Date.now();
+	let runner = null;
+	let updating = false;
+
+	function update(img) {
+		const t = Date.now();
+		const dt = (t - prevT)/1000.0;
+		for (let idx = 0; idx < points.length; ++idx) {
+			points[idx].update(dt, img);
+		}
+		prevT = t;
+	}
+
+	let count = 0;
+	function drawScene(img) {
+		console.log('drawScene ' + count++);
+		img.clear([0, 0, 0, 255]);
+		for (let idx = 0; idx < points.length; ++idx) {
+			points[idx].draw(img);
+		}
+		img.drawToCanvas();
+	}
+
+	function runCb(img) {
+		if (updating) {
+			update(img);
+		}
+		drawScene(img);
+	}
+
+	function start(nullData_) {
+		//console.log('starting');
+		updating = true;
+		prevT = Date.now();
+		runner.start();
+	}
+
+	function stopRedrawingCb(nullData_) {
+		runner.stop();
+		//console.log('stopped');
+	}
+
+	function stop(nullData_) {
+		updating = false;
+		stopTimer = new SingleShotTimer(stopRedrawingCb, 5000, null);
+		//console.log('stopping...')
+		stopTimer.start();
+	}
+
+	window.onload = function() {
+		img = new Img('Orbit');
+		repopulate();
+		console.log('points: ' + points.length);
+		update(img);
+		drawScene(img);
+		runner = new Runner(null, null, runCb, 100, img);
+		start()
+		//startTimer = new SingleShotTimer(start, 3000, null);
+		//startTimer.start();
+		//endTimer = new SingleShotTimer(stop, 13000, null);
+		//endTimer.start();
+	}
+</script>
+<style>
+	* {
+		font-family: sans-serif;
+		background-color: #222222;
+		color: #aaaaaa;
+		margin: 2px;
+	}
+	.button {
+		background-color: #444444;
+		border: 1px solid #aaaaaa;
+		padding: 5px 10px;
+		border-radius: 4px;
+	}
+	.button:hover {
+		background-color: #555555;
+	}
+	.button:active {
+		background-color: #666666;
+	}
+	div.horiz {
+		float: left;
+	}
+</style>
+</head>
+<body>
+	<h1>Orbit</h1>
+	<div class="horiz" id="canvas">
+		<canvas width="800" height="600" id="Orbit"></canvas>
+	</div>
+	<div class="horiz" id="controls">
+	</div>
+</body>
+</html>

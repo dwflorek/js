@@ -1,0 +1,256 @@
+<html>
+<head>
+<title>Conway's Game of Life</title>
+<script src="mathUtils.js"></script>
+<script src="grid.js"></script>
+<script src="simpleConway.js"></script>
+<script src="agedConway.js"></script>
+<script src="multivalueConway.js"></script>
+<script src="img.js"></script>
+<script src="color.js"></script>
+<script src="ui.js"></script>
+<script src="automation.js"></script>
+<script>
+	let conway = null;
+	let img = null;
+	let runner = null;
+	let ui = {};
+	let aged = false; // after cells are born/killed, they age/rot and change color accordingly
+	let multicolor = false;
+		// when cells are born, their color is chosen as whichever is most common among the
+		// 3 neighbors; or else if all three neighbors are different, then pick the fourth color
+
+	function drawSquare(img, x, y, w, h, color) {
+		for (let row = 0; row < h; ++row) {
+			for (let pix = 0; pix < w; ++pix) {
+				img.colorPixelXY(x + pix, y + row, color);
+			}
+		}
+	}
+
+	function drawConway(img, conway) {
+		const emptyColor =     [  0,   0,  32];
+		const liveColor =      [225, 225,   0];
+		const finalLiveColor = [  0, 128,   0];
+		const deadColor =      [100, 100, 100];
+		const finalDeadColor = [  0,   0,  32];
+		const liveGensToFinal = 32;
+		const deadGensToFinal = 32;
+		img.clear([...emptyColor, 255]);
+		
+		multicolorColors = [
+			[255, 255, 128],
+			[128, 255, 255],
+			[255, 128, 255],
+			[255, 255, 255]
+		];
+
+                // if we want n squares with (n-1) separations, that's
+		// n*squareSize + (n-1)*sepSize = n*(squareSize + sepSize) - sepSize = imgWidth
+		// if squareSize = 10*sepSize, that's
+		// n*(11*sepSize) - sepSize = (11n - 1)*sepSize = imgWidth -> sepSize = imgWidth/(11n - 1)
+		// maybe round sepSize?
+		const sepSizeX = (img.imgData.width / (11*conway.width - 1) + 0.5)>>0;
+		const sepSizeY = (img.imgData.height / (11*conway.height - 1) + 0.5)>>0;
+		const sepSize = Math.min(sepSizeX, sepSizeY);
+		// then recompute squareSize
+		// n*squareSize + (n-1)*sepSize = imgWidth -> squareSize = (imgWidth - (n-1)*sepSize) / n
+		const squareSizeX = ((img.imgData.width - (conway.width-1)*sepSize) / conway.width)>>0;
+		const squareSizeY = ((img.imgData.height - (conway.height-1)*sepSize) / conway.height)>>0;
+
+		const startX = ((img.imgData.width - (conway.width*squareSizeX + (conway.width - 1)*sepSize))/2)>>0;
+		const startY = ((img.imgData.height - (conway.height*squareSizeY + (conway.height - 1)*sepSize))/2)>>0;
+	
+		for (let y = 0, squareY = startY; y < conway.height; ++y, squareY += squareSizeY + sepSize) {
+			for (let x = 0, squareX = startX; x < conway.width; ++x, squareX += squareSizeX + sepSize) {
+				if (multicolor) {
+					const cellVal = conway.val(x, y);
+					if (cellVal > 0) {
+						const cellColor = [...multicolorColors[cellVal-1], 255];
+						drawSquare(img, squareX, squareY, squareSizeX, squareSizeY, cellColor);
+					}
+				} else if (aged) {
+					const cellVal = conway.val(x, y);
+					if (cellVal >= conway.birthVal) {
+						let lifespan = (cellVal - conway.birthVal)/liveGensToFinal;
+						if (lifespan > 1.0) {
+							lifespan = 1.0;
+						}
+						const cellColor = [...fadeColor(liveColor, finalLiveColor, lifespan), 255];
+						//console.log(x, y, cellVal, lifespan, cellColor);
+						drawSquare(img, squareX, squareY, squareSizeX, squareSizeY, cellColor);
+					} else if (cellVal <= conway.killVal) {
+						let lifespan = (conway.killVal - cellVal)/deadGensToFinal;
+						if (lifespan > 1.0) {
+							lifespan = 1.0;
+						}
+						const cellColor = [...fadeColor(deadColor, finalDeadColor, lifespan), 255];
+						drawSquare(img, squareX, squareY, squareSizeX, squareSizeY, cellColor);
+					}
+				}
+				else {
+					if (conway.isAlive(x, y)) {
+						drawSquare(img, squareX, squareY, squareSizeX, squareSizeY, [...liveColor, 255]);
+					}
+				}
+			}
+		}
+		img.drawToCanvas();
+	}
+
+	function runCb(conway) {
+		conway.evolve();
+		drawConway(img, conway);
+	}
+
+	function startRunner() {
+		ui.goStopButton.updateState('Stop', stopRunner);
+		runner.start();
+	}
+
+	function stopRunner() {
+		runner.stop();
+		ui.goStopButton.updateState('Run', startRunner);
+	}
+
+	function randomize() {
+		runner.stop();
+		conway.randomize(20);
+		drawConway(img, conway);
+		startRunner();
+	}
+
+	function glider() {
+		stopRunner();
+		conway.clear(0);
+		conway.addPattern(45, 35, [
+			".#.",
+			"..#",
+			"###"
+		]);
+		drawConway(img, conway);
+	}
+
+	function almostSquare() {
+		stopRunner();
+		conway.clear(0);
+		conway.addPattern(45, 35, [
+			"##",
+			"#."
+		]);
+		drawConway(img, conway);
+	}
+
+	function conwayTypeChanged(event) {
+		console.log('conwayTypeChanged(): radiobutton groupName ' + event.target.name + ', value ' + event.target.value);
+		stopRunner();
+		if (event.target.name == 'conway_type') { 
+			if (event.target.value == 'multi') {
+				multicolor = true;
+				aged = false;
+			} else if (event.target.value == 'aged') {
+				multicolor = false;
+				aged = true;
+			} else {
+				multicolor = false;
+				aged = false;
+			}
+		}
+		updateUIAndConway();
+		runner = new Runner(null, null, runCb, 200, conway);
+		drawConway(img, conway);
+	}
+
+	function buildUI() {
+		ui.radioButtons = new RadioButtonGroup(
+			'radiobutton',
+			'conway_type',
+			[
+				{'id': 'simple_rb', 'text': 'Simple', 'value': 'simple'},
+				{'id': 'multi_rb', 'text': 'Multicolor', 'value': 'multi'},
+				{'id': 'aged_rb', 'text': 'Aged', 'value': 'aged'}
+			],
+			conwayTypeChanged);
+		ui.randomizeButton = new PushButton('button', 'randomize', 'Randomize', randomize);
+		ui.gliderButton = new PushButton('button', 'glider', 'Glider', glider);
+		ui.squareButton = new PushButton('button', 'square', 'AlmostSquare', almostSquare);
+		ui.goStopButton = new PushButton('button', 'go_stop', '');
+
+		const controlsDiv = document.getElementById('controls');
+		ui.radioButtons.appendToElement(controlsDiv);
+		const br = document.createElement("br");
+		controlsDiv.appendChild(br);
+		ui.randomizeButton.appendToElement(controlsDiv);
+		ui.gliderButton.appendToElement(controlsDiv);
+		ui.squareButton.appendToElement(controlsDiv);
+		ui.goStopButton.appendToElement(controlsDiv);
+	}
+
+	function initFromParams() {
+		const queryString = window.location.search;
+		const urlParams = new URLSearchParams(queryString);
+		if (urlParams.has('multi')) {
+			multicolor = true;
+		} else if (urlParams.has('aged')) {
+			aged = true;
+		}
+	}
+	
+	function updateUIAndConway() {
+		if (multicolor) {
+			ui.radioButtons.selectButtonWithAttribute('value', 'multi');
+			document.getElementsByTagName('h1')[0].innerHTML = "Conway's Cheerfully Colored Game of Life";
+			conway = new MultivalueConway(100, 75);
+		} else if (aged) {
+			ui.radioButtons.selectButtonWithAttribute('value', 'aged');
+			document.getElementsByTagName('h1')[0].innerHTML = "Conway's Finely Aged Game of Life";
+			conway = new AgedConway(100, 75);
+		} else {
+			ui.radioButtons.selectButtonWithAttribute('value', 'simple');
+			document.getElementsByTagName('h1')[0].innerHTML = "Conway's Game of Life";
+			conway = new SimpleConway(100, 75, 0);
+		}
+	}
+
+	window.onload = function() {
+		buildUI();
+		initFromParams();
+		updateUIAndConway();
+		img = new Img('conway');
+		runner = new Runner(null, null, runCb, 200, conway);
+		ui.goStopButton.updateState('Run', startRunner);
+	}
+</script>
+<style>
+	* {
+		font-family: sans-serif;
+		background-color: #222222;
+		color: #aaaaaa;
+		margin: 2px;
+	}
+	.button {
+		background-color: #444444;
+		border: 1px solid #aaaaaa;
+		padding: 5px 10px;
+		border-radius: 4px;
+	}
+	.button:hover {
+		background-color: #555555;
+	}
+	.button:active {
+		background-color: #666666;
+	}
+	div.horiz {
+		float: left;
+	}
+</style>
+</head>
+<body>
+	<h1>Conway's Game of Life</h1>
+	<div class="horiz" id="canvas">
+		<canvas width="800" height="600" id="conway"></canvas>
+	</div>
+	<div class="horiz" id="controls">
+	</div>
+</body>
+</html>

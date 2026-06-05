@@ -1,0 +1,53 @@
+<html>
+<head>
+<title>Stones</title>
+<script src="stones.js"/>
+<script>
+	window.onload = function() {
+		buildUI();
+		initFromParams();
+		updateGoButton();
+		Stones.clear();
+		drawScene();
+	}
+</script>
+<style>
+	* {
+		font-family: sans-serif;
+		background-color: #222222;
+		color: #aaaaaa;
+		margin: 2px;
+	}
+	.button {
+		background-color: #444444;
+		border: 1px solid #aaaaaa;
+		padding: 5px 10px;
+		border-radius: 4px;
+	}
+	.button:hover {
+		background-color: #555555;
+	}
+	.button:active {
+		background-color: #666666;
+	}
+
+	input[type="text"] {
+		background-color: #333333;
+		border: 1px solid #555555;
+		border-radius: 2px;
+	}
+	div.horiz {
+		float: left;
+	}
+
+</style>
+</head>
+<body>
+	<h1>Stones</h1>
+	<div class="horiz" id="canvas">
+		<canvas width="800" height="600" id="stones"></canvas>
+	</div>
+	<div class="horiz" id="controls">
+	</div>
+</body>
+</html>
