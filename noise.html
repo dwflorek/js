@@ -3,12 +3,9 @@
 <head>
 <title>Noise</title>
 <script src="noise.js"></script>
+<script src="myRandom.js"></script>
 <script src="ui.js"></script>
 <script>
-	function randomOn(a, b) {
-		return a + Math.random() * (b - a);
-	}
-
 	function wrapOntoZeroOne(val) {
 		let isNeg = false;
 		if (val < 0.0) {
