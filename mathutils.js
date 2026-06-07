@@ -1,7 +1,3 @@
-function randomOn(lo, hi) {
-	return lo + (Math.random() * (hi - lo));
-}
-
 function wrapOntoZeroOne(val) {
 	let isNeg = false;
 	if (val < 0.0) {
