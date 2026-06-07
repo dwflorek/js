@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Test MyRandom</title>
+<script src="myRandom.js"></script>
+<script src="myRandom_ui.js"></script>
+<script src="ui.js"></script>
+<script src="img.js"></script>
+<script src="mathutils.js"></script>
+<script>
+	class RandomSquares {
+		constructor() {
+			this.colors = [];
+		}
+
+		randomizeColors() {
+			this.colors = [];
+			for (let i = 0; i < 16; i++) {
+				const r = to8Bit(myRandom());
+				const g = to8Bit(myRandom());
+				const b = to8Bit(myRandom());
+				this.colors.push([r, g, b, 255]);
+			}
+		}
+
+		drawRect(img, x1, x2, y1, y2, color) {
+			for (let y = y1; y <= y2; ++y) {
+				for (let x = x1; x <= x2; ++x) {
+					img.colorPixelXY(x, y, color);
+				}
+			}
+		}
+
+		draw(img) {
+			const rectWidth = img.width() / 4.0;
+			const rectHeight = img.height() / 4.0;
+			img.clear([0, 0, 0, 255]);
+			let cIdx = 0;
+			for (let y = 0; y < 4; ++y) {
+				const y1 = ((rectHeight*y + 0.5) >> 0) + 2;
+				const y2 = ((rectHeight*(y + 1) + 0.5) >> 0) - 2;
+				for (let x = 0; x < 4; ++x) {
+					const x1 = ((rectWidth*x + 0.5) >> 0) + 2;
+					const x2 = ((rectWidth*(x + 1) + 0.5) >> 0) - 2;
+					this.drawRect(img, x1, x2, y1, y2, this.colors[cIdx]);
+					cIdx += 1;
+				}
+			}
+		}
+	}
+
+	let randomSquares;
+	let img;
+
+	function initImage() {
+		img = new Img('testMyRandom');
+	}
+
+	function initViewer() {
+		randomSquares = new RandomSquares();
+		randomSquares.randomizeColors();
+	}
+
+	function drawScene() {
+		randomSquares.draw(img);
+		img.drawToCanvas();
+	}
+	
+	function applyRandomSeed(seed) {
+		sMyRandom(seed);
+		randomSquares.randomizeColors();
+		drawScene();
+	}
+
+	let ui = {};
+
+	function buildUI() {
+		randomDiv = uiRandomDiv(ui, applyRandomSeed);
+
+		const controlsDiv = document.getElementById('controls');
+		controlsDiv.appendChild(randomDiv);
+	}
+
+	function initFromParams() {
+	}
+	
+	window.onload = function() {
+		buildUI();
+		initFromParams();
+		initImage();
+		initViewer();
+		drawScene();
+	}
+</script>
+<style>
+	* {
+		font-family: sans-serif;
+		background-color: #222222;
+		color: #aaaaaa;
+		margin: 2px;
+	}
+	.button {
+		background-color: #444444;
+		border: 1px solid #aaaaaa;
+		padding: 5px 10px;
+		border-radius: 4px;
+	}
+	.button:hover {
+		background-color: #555555;
+	}
+	.button:active {
+		background-color: #666666;
+	}
+	div.horiz {
+		float: left;
+	}
+	label.rb_label {
+		margin-right: 10px;
+	}
+</style>
+</head>
+<body>
+	<h1>Test myRandom()</h1>
+	<div class="horiz" id="canvas">
+		<canvas width="800" height="600" id="testMyRandom"></canvas>
+	</div>
+	<div class="horiz" id="controls">
+	</div>
+</body>
+</html>
