@@ -1,4 +1,4 @@
-function uiNoiseFractalDiv(ui, updateFractalValsCb, refreshNoiseCb) {
+function uiNoiseFractalDiv(ui, updateFractalValsCb) {
 	const div = document.createElement('div');
 	div.setAttribute('class', 'mainDiv');
 
@@ -9,7 +9,6 @@ function uiNoiseFractalDiv(ui, updateFractalValsCb, refreshNoiseCb) {
 	ui.amplFactor = new TextEntry('textField', 'amplFactor', 0.5, 'Amplitude multiplier');
 	ui.scaleFactor = new TextEntry('textField', 'scaleFactor', 1.0, 'Overall scale multiplier');
 	ui.updateFractalButton = new PushButton('button', 'updateFractal', 'Update', updateFractalValsCb);
-	ui.refreshNoiseButton = new PushButton('button', 'refreshNoise', 'Refresh Noise', refreshNoiseCb);
 
 	ui.numOctaves.appendToElement(div);
 	ui.baseFreq.appendToElement(div);
@@ -19,7 +18,6 @@ function uiNoiseFractalDiv(ui, updateFractalValsCb, refreshNoiseCb) {
 	ui.scaleFactor.appendToElement(div);
 	div.appendChild(document.createElement('br'));
 	ui.updateFractalButton.appendToElement(div);
-	ui.refreshNoiseButton.appendToElement(div);
 
 	return div;
 }

@@ -2,14 +2,16 @@
 <html>
 <head>
 <title>Noise Fractal View</title>
+<script src="myRandom.js"></script>
 <script src="noise.js"></script>
 <script src="noiseFractal.js"></script>
 <script src="ui.js"></script>
+<script src="myRandom_ui.js"></script>
+<script src="noise_ui.js"></script>
 <script src="noiseFractal_ui.js"></script>
 <script src="automation.js"></script>
 <script src="img.js"></script>
 <script src="mathutils.js"></script>
-<script src="myRandom.js"></script>
 <script>
 	class FractalViewerBase {
 		constructor() {
@@ -98,9 +100,23 @@
 	function initViewers() {
 		fractal = new NoiseFractal();
 		fractalView = new FractalView();
-		noise = new Noise(64);
+
+		const numGradients = Number(ui.noiseSize.getContent());
+		noise = new Noise(numGradients);
+
 		fractal.setNoise(noise);
+		fractal.setOctaves(Number(ui.numOctaves.getContent())>>0);
+		fractal.setBaseFreq(Number(ui.baseFreq.getContent()));
+		fractal.setOctaveFreqFactor(Number(ui.freqFactor.getContent()));
+		fractal.setBaseAmpl(Number(ui.baseAmpl.getContent()));
+		fractal.setOctaveAmplFactor(Number(ui.amplFactor.getContent()));
+		fractal.setScaleFactor(Number(ui.scaleFactor.getContent()));
+
 		fractalView.setFractal(fractal);
+		fractalView.resetZ();
+
+		const pixelSize = 2.0 / Math.min(img.width(), img.height());
+		fractalView.setPixelSize(pixelSize);
 	}
 
 	function clearScene() {
@@ -113,47 +129,40 @@
 		img.drawToCanvas();
 	}
 	
-	function refreshNoiseAndRedraw() {
+	function applyRandomSeedAndRedraw(seed) {
 		runner.stop();
-		const noiseSize = Number(ui.noiseSize.getContent());
-		const noise = new Noise(noiseSize);
+		sMyRandom(seed);
+		const numGradients = Number(ui.noiseSize.getContent());
+		noise = new Noise(numGradients);
 		fractal.setNoise(noise);
 		drawScene();
 	}
 
-	function applyRandomSeed(seed) {
+	function refreshNoiseAndRedraw() {
 		runner.stop();
-		sMyRandom(seed);
-		refresNoiseAndRedraw();
+		const numGradients = Number(ui.noiseSize.getContent());
+		noise = new Noise(numGradients);
+		fractal.setNoise(noise);
+		drawScene();
 	}
 
-	function updateNoiseValsAndRedraw() {
+	function refreshFractalAndRedraw() {
 		runner.stop();
-	
-		seed. 
-		noise = new Noise(Number(ui.noiseSize.getContent()));
-
-	function updateFractalValsAndRedraw() {
-		runner.stop();
-
 		fractal.setOctaves(Number(ui.numOctaves.getContent())>>0);
 		fractal.setBaseFreq(Number(ui.baseFreq.getContent()));
 		fractal.setOctaveFreqFactor(Number(ui.freqFactor.getContent()));
 		fractal.setBaseAmpl(Number(ui.baseAmpl.getContent()));
 		fractal.setOctaveAmplFactor(Number(ui.amplFactor.getContent()));
 		fractal.setScaleFactor(Number(ui.scaleFactor.getContent()));
-
 		fractalView.resetZ();
-		const pixelSize = 2.0 / Math.min(img.width(), img.height());
-		fractalView.setPixelSize(pixelSize);
-
 		drawScene();
 	}
 
-	function updateZVal() {
-		z = Number(ui.zValue.getContent());
-		fractalView.setZ(z);
-		drawScene();
+	function setZVal() {
+		fractalView.setZ(Number(ui.zValue.getContent()));
+		if (!runner.running()) {
+			drawScene();
+		}
 	}
 
 	function updateZAndDraw() {
@@ -184,13 +193,16 @@
 	}
 
 	function buildUI() {
-		randomDiv = uiRandomDiv(ui, applyRandomSeed);
-		noiseFractalDiv = uiNoiseFractalDiv(ui, updateFractalValsAndRedraw, refreshNoiseAndRedraw);
+		const randomDiv = uiRandomDiv(ui, applyRandomSeedAndRedraw);
+		const noiseDiv = uiNoiseDiv(ui, refreshNoiseAndRedraw);
+		const noiseFractalDiv = uiNoiseFractalDiv(ui, refreshFractalAndRedraw);
 		ui.zValue = new TextEntry('textField', 'zVal', 0.0, 'Z-value for noise (x & y from pixel)');
-		ui.updateZButton = new PushButton('button', 'updateZ', 'Update Z', updateZVal);
+		ui.updateZButton = new PushButton('button', 'updateZ', 'Update Z', setZVal);
 		ui.goStopButton = new PushButton('button', 'go_stop', '');
 
 		const controlsDiv = document.getElementById('controls');
+		controlsDiv.appendChild(randomDiv);
+		controlsDiv.appendChild(noiseDiv);
 		controlsDiv.appendChild(noiseFractalDiv);
 		controlsDiv.appendChild(document.createElement('br'));
 		ui.zValue.appendToElement(controlsDiv);
@@ -210,7 +222,7 @@
 		initImage();
 		initViewers();
 		clearScene();
-		updateFractalValsAndRedraw();
+		drawScene();
 	}
 </script>
 <style>
