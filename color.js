@@ -54,3 +54,7 @@ function fadeColor(c1, c2, t) {
 	// return c1*(1-t) + c2*t;
 	return mixColor(c1, 1.0-t, c2, t);
 }
+
+function roundColor(c) {
+	return [ (c[0] + 0.5)>>0, (c[1] + 0.5)>>0, (c[2] + 0.5)>>0 ];
+}
